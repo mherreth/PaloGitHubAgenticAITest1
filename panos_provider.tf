@@ -18,7 +18,7 @@ provider "azurerm" {
 }
 
 provider "panos" {
-  hostname = var["panorama-server"]
+  hostname = var.panorama_server
   password = var.password
   username = var.username
 }
