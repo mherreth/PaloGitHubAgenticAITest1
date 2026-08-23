@@ -18,8 +18,7 @@ variable "username" {
 }
 
 variable "password" {
-  default     = "Janelle_2017#"
   description = "password"
+  sensitive   = true
   type        = string
 }
-
