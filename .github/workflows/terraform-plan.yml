@@ -6,21 +6,21 @@ on:
 
 jobs:
   terraform:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, windows, x64]
 
     env:
-
-      PANOS_HOSTNAME: 192.168.1.109
-      PANOS_PASSWORD: Janelle_2017#
-      PANOS_USERNAME: admin
+      TF_IN_AUTOMATION: true
+      TF_VAR_panos_hostname: ${{ secrets.PANOS_HOSTNAME }}
+      TF_VAR_panos_password: ${{ secrets.PANOS_PASSWORD }}
+      TF_VAR_panos_username: ${{ secrets.PANOS_USERNAME }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v1
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -input=false
 
       - name: Terraform Plan
-        run: terraform plan 
+        run: terraform plan -input=false

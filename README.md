@@ -13,6 +13,24 @@ This template does the following:
    - Creates various NAT rules 
    - Creates various Security rules
 
+GitHub Actions runner setup:
+----------------------------
+
+The workflows in `.github/workflows/` are configured for a Windows self-hosted runner with the labels `self-hosted`, `windows`, and `x64`.
+
+Before running the workflows, add these repository secrets:
+
+- `PANOS_HOSTNAME`
+- `PANOS_USERNAME`
+- `PANOS_PASSWORD`
+
+To register the runner on a Windows host:
+
+1. In the repository, open **Settings > Actions > Runners > New self-hosted runner**.
+2. Choose **Windows** and **x64**.
+3. Use the generated registration command from GitHub and provide the token at setup time. Do not store the registration token in this repository or in workflow files.
+4. Start the runner with `run.cmd`, or install it as a service if the host should stay online for unattended workflow runs.
+
 Support:
 --------
 

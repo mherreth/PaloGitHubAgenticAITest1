@@ -18,8 +18,7 @@ features {}
 }
 
 provider "panos" {
-hostname = "192.168.1.109"
-password = "Janelle_2017#"
-username = "admin"
+hostname = var.panos_hostname
+password = var.panos_password
+username = var.panos_username
 }
-

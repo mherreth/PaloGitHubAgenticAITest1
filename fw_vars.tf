@@ -5,21 +5,18 @@ variable "hostname" {
   type        = string
 }
 
-variable "panorama-server" {
-  default     = "192.168.1.109"
-  description = "The FQDN or IP address of the primary Panorama server"
+variable "panos_hostname" {
+  description = "The FQDN or IP address of the PAN-OS device"
   type        = string
 }
 
-variable "username" {
-  default     = "admin"
-  description = "username"
+variable "panos_username" {
+  description = "PAN-OS username"
   type        = string
 }
 
-variable "password" {
-  default     = "Janelle_2017#"
-  description = "password"
+variable "panos_password" {
+  description = "PAN-OS password"
   type        = string
+  sensitive   = true
 }
-
