@@ -6,7 +6,6 @@ variable "hostname" {
 }
 
 variable "panorama_server" {
-  default     = "192.168.1.109"
   description = "The FQDN or IP address of the primary Panorama server"
   type        = string
 }
