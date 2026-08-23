@@ -1,0 +1,27 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    env:
+      
+      PANOS_HOSTNAME: 192.168.1.109
+      PANOS_PASSWORD: Janelle_2017#
+      PANOS_USERNAME: admin
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve

@@ -1,0 +1,26 @@
+name: Terraform Plan
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    env:
+
+      PANOS_HOSTNAME: 192.168.1.109
+      PANOS_PASSWORD: Janelle_2017#
+      PANOS_USERNAME: admin
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Plan
+        run: terraform plan 
