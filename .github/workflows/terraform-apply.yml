@@ -38,7 +38,9 @@ jobs:
           }
 
       - name: Terraform Plan
-        run: terraform plan -input=false -parallelism=1
+        run: terraform plan -input=false -parallelism=1 `
+          -replace=panos_panorama_security_rule_group.example1 `
+          -replace=panos_panorama_security_rule_group.example2
 
   apply:
     needs: plan
@@ -70,28 +72,23 @@ jobs:
       - name: Terraform Plan after approval
         shell: powershell
         run: |
-          $ruleResources = @(
-            "panos_panorama_security_rule_group.example1",
-            "panos_panorama_security_rule_group.example2"
-          )
-          $stateResources = terraform state list 2>$null
-          foreach ($resource in $ruleResources) {
-            if ($stateResources -contains $resource) {
-              terraform state rm $resource
-              if ($LASTEXITCODE -ne 0) {
-                throw "Could not remove stale Terraform state for $resource"
-              }
-              Write-Output "Removed stale state for $resource so Terraform recreates it in Panorama DG1."
-            }
-          }
-          terraform plan -input=false -parallelism=1 -out=tfplan
+          terraform plan -input=false -parallelism=1 `
+            -replace=panos_panorama_security_rule_group.example1 `
+            -replace=panos_panorama_security_rule_group.example2 `
+            -out=tfplan
           $planOutput = terraform show -no-color tfplan
           $planText = $planOutput -join [Environment]::NewLine
           $planText
-          foreach ($ruleName in @("Deny sales to eng", "ssl traffic")) {
-            if ($planText -notmatch [regex]::Escape($ruleName)) {
-              throw "Approved Terraform plan does not contain firewall rule '$ruleName'. No rule will be pushed to Panorama."
-            }
+          $planJsonOutput = terraform show -json tfplan
+          $planJson = ($planJsonOutput -join [Environment]::NewLine) | ConvertFrom-Json
+          $changedRules = @($planJson.resource_changes | Where-Object {
+            $_.address -in @(
+              "panos_panorama_security_rule_group.example1",
+              "panos_panorama_security_rule_group.example2"
+            ) -and $_.change.actions -notcontains "no-op"
+          })
+          if ($changedRules.Count -ne 2) {
+            throw "Terraform plan did not include both Panorama DG1 firewall rule resources."
           }
 
       - name: Terraform Apply
