@@ -1,90 +1,72 @@
-#!/usr/bin/env bash
-set -euo pipefail
+$ErrorActionPreference = "Stop"
 
-: "${PANOS_HOSTNAME:?PANOS_HOSTNAME is required}"
-: "${PANOS_USERNAME:?PANOS_USERNAME is required}"
-: "${PANOS_PASSWORD:?PANOS_PASSWORD is required}"
-PANOS_DEVICE_GROUP="${PANOS_DEVICE_GROUP:-DG1}"
-PANOS_COMMIT_DESCRIPTION="${PANOS_COMMIT_DESCRIPTION:-Terraform apply}"
-API_URL="https://${PANOS_HOSTNAME}/api"
+$hostname = $env:PANOS_HOSTNAME
+$username = $env:PANOS_USERNAME
+$password = $env:PANOS_PASSWORD
+$deviceGroup = if ($env:PANOS_DEVICE_GROUP) { $env:PANOS_DEVICE_GROUP } else { "DG1" }
+$description = if ($env:PANOS_COMMIT_DESCRIPTION) { $env:PANOS_COMMIT_DESCRIPTION } else { "Terraform apply" }
+if ([string]::IsNullOrWhiteSpace($hostname)) { throw "PANOS_HOSTNAME is required" }
+if ([string]::IsNullOrWhiteSpace($username)) { throw "PANOS_USERNAME is required" }
+if ([string]::IsNullOrWhiteSpace($password)) { throw "PANOS_PASSWORD is required" }
+$apiUrl = "https://$hostname/api"
 
-panos_api() {
-	curl --silent --show-error --fail --insecure --request POST \
-		--data-urlencode "type=$1" \
-		--data-urlencode "key=$2" \
-		--data-urlencode "cmd=$3" \
-		"$API_URL"
+function Invoke-PanosApi {
+  param([string]$Type, [string]$Key, [string]$Command)
+  $arguments = @("--silent", "--show-error", "--fail", "--insecure", "--request", "POST", "--data-urlencode", "type=$Type", "--data-urlencode", "key=$Key", "--data-urlencode", "cmd=$Command", $apiUrl)
+  $content = & curl.exe @arguments
+  if ($LASTEXITCODE -ne 0) { throw "Panorama API request failed" }
+  return ([xml]($content -join "`n"))
 }
 
-get_job_id() {
-	printf '%s' "$1" | sed -n \
-		-e 's:.*<job>\([0-9][0-9]*\)</job>.*:\1:p' \
-		-e 's:.*<jobid>\([0-9][0-9]*\)</jobid>.*:\1:p' \
-		-e 's:.*<job-id>\([0-9][0-9]*\)</job-id>.*:\1:p' | head -n 1
+function Get-PanosJobId {
+  param([xml]$Response)
+  foreach ($xpath in @("/response/result/job", "/response/result/jobid", "/response/result/job-id")) {
+    $node = $Response.SelectSingleNode($xpath)
+    if ($node -and $node.InnerText) { return $node.InnerText }
+  }
+  $match = [regex]::Match($Response.InnerText, "(?i)job(?:\s*id)?\s*[:=]?\s*(\d+)")
+  if ($match.Success) { return $match.Groups[1].Value }
+  return $null
 }
 
-wait_for_job() {
-	local key="$1"
-	local job_id="$2"
-	local description="$3"
-	local response status result
-
-	for _ in $(seq 1 30); do
-		sleep 10
-		response="$(panos_api op "$key" "<show><jobs><id>${job_id}</id></jobs></show>")"
-		status="$(printf '%s' "$response" | sed -n 's:.*<status>\([^<]*\)</status>.*:\1:p' | head -n 1)"
-		result="$(printf '%s' "$response" | sed -n 's:.*<result>\([^<]*\)</result>.*:\1:p' | head -n 1)"
-		echo "${description} job ${job_id} status: ${status}"
-		if [ "$status" = "FIN" ]; then
-			if [ "$result" != "OK" ]; then
-				echo "${description} failed: ${response}" >&2
-				return 1
-			fi
-			echo "${description} job ${job_id} completed successfully."
-			return 0
-		fi
-	done
-
-	echo "${description} job ${job_id} did not finish within 5 minutes." >&2
-	return 1
+function Wait-PanosJob {
+  param([string]$Key, [string]$JobId, [string]$Description)
+  for ($attempt = 1; $attempt -le 30; $attempt++) {
+    Start-Sleep -Seconds 10
+    $response = Invoke-PanosApi "op" $Key "<show><jobs><id>$JobId</id></jobs></show>"
+    $job = $response.response.result.job
+    Write-Output "$Description job $JobId status: $($job.status)"
+    if ($job.status -eq "FIN") {
+      if ($job.result -ne "OK") { throw "$Description failed: $($response.OuterXml)" }
+      Write-Output "$Description job $JobId completed successfully."
+      return
+    }
+  }
+  throw "$Description job $JobId did not finish within 5 minutes"
 }
 
-keygen_response="$(curl --silent --show-error --fail --insecure --request POST \
-	--data-urlencode "type=keygen" \
-	--data-urlencode "user=${PANOS_USERNAME}" \
-	--data-urlencode "password=${PANOS_PASSWORD}" \
-	"$API_URL")"
-key="$(printf '%s' "$keygen_response" | sed -n 's:.*<key>\([^<]*\)</key>.*:\1:p' | head -n 1)"
-if [ -z "$key" ]; then
-	echo "Panorama did not return an API key: ${keygen_response}" >&2
-	exit 1
-fi
+$keygenArguments = @("--silent", "--show-error", "--fail", "--insecure", "--request", "POST", "--data-urlencode", "type=keygen", "--data-urlencode", "user=$username", "--data-urlencode", "password=$password", $apiUrl)
+$keygenContent = & curl.exe @keygenArguments
+if ($LASTEXITCODE -ne 0) { throw "Panorama API key generation request failed" }
+$key = ([xml]($keygenContent -join "`n")).response.result.key
+if ([string]::IsNullOrWhiteSpace($key)) { throw "Panorama did not return an API key" }
 
-candidate_command="<commit><description>${PANOS_COMMIT_DESCRIPTION}</description><partial><device-group><entry name='${PANOS_DEVICE_GROUP}'/></device-group></partial></commit>"
-candidate_response="$(panos_api commit "$key" "$candidate_command")"
-candidate_job_id="$(get_job_id "$candidate_response")"
-candidate_code="$(printf '%s' "$candidate_response" | sed -n 's:.*<response[^>]*code="\([0-9]*\)".*:\1:p' | head -n 1)"
+$candidate = Invoke-PanosApi "commit" $key "<commit><description>$description</description><partial><device-group><entry name='$deviceGroup'/></device-group></partial></commit>"
+$candidateJob = Get-PanosJobId $candidate
+if ($candidateJob) {
+  Wait-PanosJob $key $candidateJob "Panorama $deviceGroup candidate commit"
+} elseif ($candidate.response.code -eq "13" -or $candidate.InnerText -match "(?i)no changes|same as the previous commit|no edits have been made") {
+  Write-Output "Panorama reports no new $deviceGroup candidate changes."
+} else {
+  throw "Panorama candidate commit failed: $($candidate.OuterXml)"
+}
 
-if [ -n "$candidate_job_id" ]; then
-	wait_for_job "$key" "$candidate_job_id" "Panorama ${PANOS_DEVICE_GROUP} candidate commit"
-elif [ "$candidate_code" = "13" ] || printf '%s' "$candidate_response" | grep -Eiq 'same as the previous commit|no edits have been made|no changes'; then
-	echo "Panorama reports no new ${PANOS_DEVICE_GROUP} candidate changes."
-else
-	echo "Panorama candidate commit failed or returned no job ID: ${candidate_response}" >&2
-	exit 1
-fi
-
-echo "Starting full production push for Panorama ${PANOS_DEVICE_GROUP}."
-push_command="<commit-all><shared-policy><device-group><entry name='${PANOS_DEVICE_GROUP}'/></device-group></shared-policy></commit-all>"
-push_response="$(panos_api commit "$key" "$push_command")"
-push_job_id="$(get_job_id "$push_response")"
-push_code="$(printf '%s' "$push_response" | sed -n 's:.*<response[^>]*code="\([0-9]*\)".*:\1:p' | head -n 1)"
-
-if [ -n "$push_job_id" ]; then
-	wait_for_job "$key" "$push_job_id" "Panorama ${PANOS_DEVICE_GROUP} full production push"
-elif [ "$push_code" = "19" ] || printf '%s' "$push_response" | grep -Eiq 'no changes to commit|no changes'; then
-	echo "Panorama reports that ${PANOS_DEVICE_GROUP} is already synchronized with the managed firewalls."
-else
-	echo "Panorama production push failed or returned no job ID: ${push_response}" >&2
-	exit 1
-fi
+$push = Invoke-PanosApi "commit" $key "<commit-all><shared-policy><device-group><entry name='$deviceGroup'/></device-group></shared-policy></commit-all>"
+$pushJob = Get-PanosJobId $push
+if ($pushJob) {
+  Wait-PanosJob $key $pushJob "Panorama $deviceGroup full production push"
+} elseif ($push.response.code -eq "19" -or $push.InnerText -match "(?i)no changes") {
+  Write-Output "Panorama reports that $deviceGroup is already synchronized with the managed firewalls."
+} else {
+  throw "Panorama production push failed: $($push.OuterXml)"
+}

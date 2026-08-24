@@ -91,14 +91,7 @@ jobs:
           if (-not (Test-Path ./commit.sh)) {
             throw "commit.sh was not checked out into the GitHub Actions workspace"
           }
-          $bash = @(
-            "C:\Program Files\Git\bin\bash.exe",
-            "C:\Program Files\Git\usr\bin\bash.exe"
-          ) | Where-Object { Test-Path $_ } | Select-Object -First 1
-          if (-not $bash) {
-            throw "Git Bash was not found on the self-hosted runner"
-          }
-          & $bash ./commit.sh
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "& ([scriptblock]::Create((Get-Content -Raw -LiteralPath './commit.sh')))"
           if ($LASTEXITCODE -ne 0) {
             throw "commit.sh failed with exit code $LASTEXITCODE"
           }
