@@ -137,25 +137,24 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           $applyOutput = & terraform apply -input=false -parallelism=1 -auto-approve tfplan 2>&1
-          $applyExitCode = $LASTEXITCODE
+          $applySucceeded = $?
           $applyOutput | ForEach-Object { Write-Output $_ }
-          if ($null -eq $applyExitCode) { $applyExitCode = -1 }
-          if ($applyExitCode -ne 0) {
-            throw "terraform apply failed (exit code $applyExitCode)."
+          Write-Output "terraform apply success flag: $applySucceeded"
+          if (-not $applySucceeded) {
+            throw "terraform apply failed."
           }
 
           $stateEntries = & terraform state list 2>&1
-          $stateExitCode = $LASTEXITCODE
-          if ($null -eq $stateExitCode) { $stateExitCode = -1 }
-          Write-Output "terraform state list exit code: $stateExitCode"
+          $stateSucceeded = $?
+          Write-Output "terraform state list success flag: $stateSucceeded"
           Write-Output "Raw terraform state list output:"
           $stateEntries | ForEach-Object { Write-Output $_ }
           $panosEntries = @($stateEntries | Where-Object { $_ -is [string] -and $_ -like "panos_*" })
           $panosCount = $panosEntries.Count
           Write-Output "Terraform PAN-OS state resource count: $panosCount"
           foreach ($entry in $panosEntries) { Write-Output "Terraform state resource: $entry" }
-          if ($stateExitCode -ne 0) {
-            throw "terraform state list failed after apply (exit code $stateExitCode)."
+          if (-not $stateSucceeded) {
+            throw "terraform state list failed after apply."
           }
           if ($panosCount -eq 0) {
             throw "Terraform apply completed but no PAN-OS resources exist in state. No Panorama changes can be committed."
