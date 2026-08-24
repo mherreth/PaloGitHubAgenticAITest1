@@ -7,21 +7,27 @@ on:
 jobs:
   terraform:
     runs-on: self-hosted
-
+    timeout-minutes: 15
     env:
-      
-      PANOS_HOSTNAME: 192.168.1.109
-      PANOS_PASSWORD: Janelle_2017#
-      PANOS_USERNAME: admin
+      TF_VAR_panorama-server: ${{ secrets.PANOS_HOSTNAME }}
+      TF_VAR_password: ${{ secrets.PANOS_PASSWORD }}
+      TF_VAR_username: ${{ secrets.PANOS_USERNAME }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v1
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
         run: terraform init
+
+      - name: Check PAN-OS connectivity
+        shell: powershell
+        run: |
+          if (-not (Test-NetConnection -ComputerName ${env:TF_VAR_panorama-server} -Port 443 -InformationLevel Quiet)) {
+            throw "Cannot reach PAN-OS at ${env:TF_VAR_panorama-server} on TCP 443"
+          }
 
       - name: Terraform Apply
         run: terraform apply -auto-approve

@@ -7,16 +7,15 @@ on:
 jobs:
   terraform:
     runs-on: self-hosted
-
+    timeout-minutes: 15
     env:
-
-      PANOS_HOSTNAME: 192.168.1.109
-      PANOS_PASSWORD: Janelle_2017#
-      PANOS_USERNAME: admin
+      TF_VAR_panorama-server: ${{ secrets.PANOS_HOSTNAME }}
+      TF_VAR_password: ${{ secrets.PANOS_PASSWORD }}
+      TF_VAR_username: ${{ secrets.PANOS_USERNAME }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v1
+        uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
         run: terraform init

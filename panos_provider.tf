@@ -18,8 +18,8 @@ features {}
 }
 
 provider "panos" {
-hostname = "192.168.1.109"
-password = "Janelle_2017#"
-username = "admin"
+  hostname = var.panorama-server
+  password = var.password
+  username = var.username
 }
 
