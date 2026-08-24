@@ -136,13 +136,21 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          terraform apply -input=false -parallelism=1 -auto-approve tfplan
-          $stateEntries = terraform state list
+          $applyOutput = & terraform apply -input=false -parallelism=1 -auto-approve tfplan 2>&1
+          $applyExitCode = $LASTEXITCODE
+          $applyOutput | ForEach-Object { Write-Output $_ }
+          if ($null -eq $applyExitCode) { $applyExitCode = -1 }
+          if ($applyExitCode -ne 0) {
+            throw "terraform apply failed (exit code $applyExitCode)."
+          }
+
+          $stateEntries = & terraform state list 2>&1
           $stateExitCode = $LASTEXITCODE
+          if ($null -eq $stateExitCode) { $stateExitCode = -1 }
           Write-Output "terraform state list exit code: $stateExitCode"
           Write-Output "Raw terraform state list output:"
           $stateEntries | ForEach-Object { Write-Output $_ }
-          $panosEntries = @($stateEntries | Where-Object { $_ -like "panos_*" })
+          $panosEntries = @($stateEntries | Where-Object { $_ -is [string] -and $_ -like "panos_*" })
           $panosCount = $panosEntries.Count
           Write-Output "Terraform PAN-OS state resource count: $panosCount"
           foreach ($entry in $panosEntries) { Write-Output "Terraform state resource: $entry" }
