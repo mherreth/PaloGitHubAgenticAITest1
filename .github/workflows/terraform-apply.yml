@@ -28,12 +28,27 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $match = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "fw_config.tf" -Recurse -File | Select-Object -First 1
-          if (-not $match) { throw "Could not find fw_config.tf anywhere under GITHUB_WORKSPACE." }
-          $tfDir = $match.Directory.FullName
-          if (-not (Test-Path (Join-Path $tfDir "panos_provider.tf"))) {
-            throw "Found fw_config.tf at $tfDir but panos_provider.tf is missing in that directory."
+          $matches = @(Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "fw_config.tf" -Recurse -File)
+          if ($matches.Count -eq 0) { throw "Could not find fw_config.tf anywhere under GITHUB_WORKSPACE." }
+          Write-Output "fw_config.tf candidates discovered:"
+          $matches | ForEach-Object { Write-Output " - $($_.FullName)" }
+
+          $validDirs = @()
+          foreach ($match in $matches) {
+            $dir = $match.Directory.FullName
+            $hasProvider = Test-Path (Join-Path $dir "panos_provider.tf")
+            $hasVars = Test-Path (Join-Path $dir "fw_vars.tf")
+            $panosResourceLines = Select-String -Path $match.FullName -Pattern 'resource\s+"panos_' -AllMatches
+            $panosResourceLineCount = if ($panosResourceLines) { @($panosResourceLines).Count } else { 0 }
+            Write-Output "Candidate check: dir=$dir hasProvider=$hasProvider hasVars=$hasVars panosLines=$panosResourceLineCount"
+            if ($hasProvider -and $hasVars -and $panosResourceLineCount -gt 0) {
+              $validDirs += $dir
+            }
           }
+          if ($validDirs.Count -eq 0) {
+            throw "No valid Terraform directory found containing fw_config.tf, panos_provider.tf, fw_vars.tf, and panos_ resources."
+          }
+          $tfDir = $validDirs | Sort-Object Length | Select-Object -First 1
           "TF_WORKING_DIR=$tfDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Output "Resolved Terraform working directory: $tfDir"
 
@@ -124,12 +139,27 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $match = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "fw_config.tf" -Recurse -File | Select-Object -First 1
-          if (-not $match) { throw "Could not find fw_config.tf anywhere under GITHUB_WORKSPACE." }
-          $tfDir = $match.Directory.FullName
-          if (-not (Test-Path (Join-Path $tfDir "panos_provider.tf"))) {
-            throw "Found fw_config.tf at $tfDir but panos_provider.tf is missing in that directory."
+          $matches = @(Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "fw_config.tf" -Recurse -File)
+          if ($matches.Count -eq 0) { throw "Could not find fw_config.tf anywhere under GITHUB_WORKSPACE." }
+          Write-Output "fw_config.tf candidates discovered:"
+          $matches | ForEach-Object { Write-Output " - $($_.FullName)" }
+
+          $validDirs = @()
+          foreach ($match in $matches) {
+            $dir = $match.Directory.FullName
+            $hasProvider = Test-Path (Join-Path $dir "panos_provider.tf")
+            $hasVars = Test-Path (Join-Path $dir "fw_vars.tf")
+            $panosResourceLines = Select-String -Path $match.FullName -Pattern 'resource\s+"panos_' -AllMatches
+            $panosResourceLineCount = if ($panosResourceLines) { @($panosResourceLines).Count } else { 0 }
+            Write-Output "Candidate check: dir=$dir hasProvider=$hasProvider hasVars=$hasVars panosLines=$panosResourceLineCount"
+            if ($hasProvider -and $hasVars -and $panosResourceLineCount -gt 0) {
+              $validDirs += $dir
+            }
           }
+          if ($validDirs.Count -eq 0) {
+            throw "No valid Terraform directory found containing fw_config.tf, panos_provider.tf, fw_vars.tf, and panos_ resources."
+          }
+          $tfDir = $validDirs | Sort-Object Length | Select-Object -First 1
           "TF_WORKING_DIR=$tfDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           Write-Output "Resolved Terraform working directory: $tfDir"
 
