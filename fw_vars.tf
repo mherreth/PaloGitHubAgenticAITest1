@@ -11,6 +11,7 @@ variable "panorama-server" {
 }
 
 variable "device-group" {
+  default     = "DG1"
   description = "The Panorama device group that receives the security rules"
   type        = string
 }
