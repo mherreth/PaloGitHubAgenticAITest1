@@ -110,9 +110,10 @@ jobs:
             --data-urlencode "xpath=/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='DG1']/pre-rulebase/security/rules" `
             $apiUrl
           if ($LASTEXITCODE -ne 0) { throw "Panorama DG1 candidate configuration query failed" }
-          $ruleText = ([xml]($rules -join "`n")).InnerText
+          $ruleDocument = [xml]($rules -join "`n")
           foreach ($ruleName in @("Deny sales to eng", "ssl traffic")) {
-            if ($ruleText -notmatch [regex]::Escape($ruleName)) {
+            $ruleNode = $ruleDocument.SelectSingleNode("//*[local-name()='entry'][@name='$ruleName']")
+            if ($null -eq $ruleNode) {
               throw "Terraform apply did not create firewall rule '$ruleName' in Panorama DG1 candidate configuration."
             }
           }
