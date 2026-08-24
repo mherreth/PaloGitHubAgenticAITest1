@@ -125,22 +125,30 @@ jobs:
           $planJson = Get-Content -Raw -Path $planJsonPath | ConvertFrom-Json
           $changeCount = @($planJson.resource_changes).Count
           Write-Output "Terraform plan resource change count: $changeCount"
+          foreach ($change in @($planJson.resource_changes)) {
+            Write-Output "Terraform planned change: $($change.address)"
+          }
           if ($changeCount -eq 0) {
             throw "Terraform plan contains zero resource changes. PAN-OS resources are not being planned."
           }
 
       - name: Terraform Apply
-        run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
-
-      - name: Verify Terraform PAN-OS state entries
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+          terraform apply -input=false -parallelism=1 -auto-approve tfplan
           $stateEntries = terraform state list
+          $stateExitCode = $LASTEXITCODE
+          Write-Output "terraform state list exit code: $stateExitCode"
+          Write-Output "Raw terraform state list output:"
+          $stateEntries | ForEach-Object { Write-Output $_ }
           $panosEntries = @($stateEntries | Where-Object { $_ -like "panos_*" })
           $panosCount = $panosEntries.Count
           Write-Output "Terraform PAN-OS state resource count: $panosCount"
           foreach ($entry in $panosEntries) { Write-Output "Terraform state resource: $entry" }
+          if ($stateExitCode -ne 0) {
+            throw "terraform state list failed after apply (exit code $stateExitCode)."
+          }
           if ($panosCount -eq 0) {
             throw "Terraform apply completed but no PAN-OS resources exist in state. No Panorama changes can be committed."
           }
