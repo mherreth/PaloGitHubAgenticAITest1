@@ -149,13 +149,22 @@ jobs:
           Write-Output "terraform state list success flag: $stateSucceeded"
           Write-Output "Raw terraform state list output:"
           $stateEntries | ForEach-Object { Write-Output $_ }
-          $panosEntries = @($stateEntries | Where-Object { $_ -is [string] -and $_ -like "panos_*" })
-          $panosCount = $panosEntries.Count
-          Write-Output "Terraform PAN-OS state resource count: $panosCount"
-          foreach ($entry in $panosEntries) { Write-Output "Terraform state resource: $entry" }
           if (-not $stateSucceeded) {
             throw "terraform state list failed after apply."
           }
+
+          $stateJsonPath = Join-Path (Get-Location) "tfstate.json"
+          terraform state pull > $stateJsonPath
+          $stateJson = Get-Content -Raw -Path $stateJsonPath | ConvertFrom-Json
+          $resourceBlocks = @($stateJson.resources)
+          $panosBlocks = @($resourceBlocks | Where-Object { $_.type -like "panos_*" })
+          $panosCount = 0
+          foreach ($block in $panosBlocks) {
+            $instances = @($block.instances)
+            if ($instances.Count -eq 0) { $panosCount += 1 } else { $panosCount += $instances.Count }
+            Write-Output "Terraform state PAN-OS block: $($block.type).$($block.name) instances=$($instances.Count)"
+          }
+          Write-Output "Terraform PAN-OS state resource count: $panosCount"
           if ($panosCount -eq 0) {
             throw "Terraform apply completed but no PAN-OS resources exist in state. No Panorama changes can be committed."
           }
