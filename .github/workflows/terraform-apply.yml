@@ -36,6 +36,13 @@ jobs:
       - name: Terraform Plan
         run: terraform plan -input=false -out=tfplan
 
+      - name: Upload Terraform plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: tfplan
+          retention-days: 1
+
   apply:
     needs: plan
     runs-on: self-hosted
@@ -56,6 +63,11 @@ jobs:
       - name: Terraform Init
         run: terraform init -input=false
 
+      - name: Download approved Terraform plan
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan
+
       - name: Check PAN-OS connectivity
         shell: powershell
         run: |
@@ -64,7 +76,7 @@ jobs:
           }
 
       - name: Terraform Apply
-        run: terraform apply -input=false -auto-approve
+        run: terraform apply -input=false -auto-approve tfplan
 
       - name: Commit candidate configuration to Panorama
         shell: powershell
@@ -95,4 +107,30 @@ jobs:
           if ($commitResponse.response.status -ne "success") {
             throw "Panorama commit request failed: $commitContent"
           }
-          Write-Output "Panorama commit request accepted."
+          $jobId = $commitResponse.response.result.job
+          if ([string]::IsNullOrWhiteSpace($jobId)) {
+            throw "Panorama did not return a commit job ID"
+          }
+
+          for ($attempt = 1; $attempt -le 30; $attempt++) {
+            Start-Sleep -Seconds 10
+            $jobContent = & curl.exe --silent --show-error --fail --insecure --request POST `
+              --data-urlencode "type=op" `
+              --data-urlencode "key=$key" `
+              --data-urlencode "cmd=<show><jobs><id>$jobId</id></jobs></show>" `
+              $apiUrl
+            if ($LASTEXITCODE -ne 0) {
+              throw "Panorama commit status request failed"
+            }
+            $jobResponse = [xml]$jobContent
+            $job = $jobResponse.response.result.job
+            Write-Output "Panorama commit job $jobId status: $($job.status)"
+            if ($job.status -eq "FIN") {
+              if ($job.result -ne "OK") {
+                throw "Panorama commit job failed: $jobContent"
+              }
+              Write-Output "Panorama commit job $jobId completed successfully."
+              exit 0
+            }
+          }
+          throw "Panorama commit job $jobId did not finish within 5 minutes"
