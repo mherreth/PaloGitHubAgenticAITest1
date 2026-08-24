@@ -111,6 +111,19 @@ jobs:
       - name: Terraform Apply
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
 
+      - name: Verify Terraform PAN-OS state entries
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $stateEntries = terraform state list
+          $panosEntries = @($stateEntries | Where-Object { $_ -like "panos_*" })
+          $panosCount = $panosEntries.Count
+          Write-Output "Terraform PAN-OS state resource count: $panosCount"
+          foreach ($entry in $panosEntries) { Write-Output "Terraform state resource: $entry" }
+          if ($panosCount -eq 0) {
+            throw "Terraform apply completed but no PAN-OS resources exist in state. No Panorama changes can be committed."
+          }
+
       - name: Verify DG1 objects and rules on Panorama
         shell: powershell
         env:
@@ -163,46 +176,62 @@ jobs:
           $key = ([xml]($keygenContent -join "`n")).response.result.key
           if ([string]::IsNullOrWhiteSpace($key)) { throw "Panorama did not return an API key" }
 
-          $baseXpath = "/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='$deviceGroup']"
-
-          $addressResponse = Invoke-PanosConfigGet $key "$baseXpath/address"
-          $addressEntries = $addressResponse.SelectNodes("/response/result/address/entry")
-          $addressCount = if ($addressEntries) { $addressEntries.Count } else { 0 }
-          Write-Output "Panorama DG $deviceGroup address object count: $addressCount"
-          if ($addressEntries) {
-            foreach ($entry in $addressEntries) {
-              $name = $entry.GetAttribute("name")
-              $ipNetmask = Get-NodeText $entry "ip-netmask"
-              $ipRange = Get-NodeText $entry "ip-range"
-              $fqdn = Get-NodeText $entry "fqdn"
-              $value = $ipNetmask
-              if ([string]::IsNullOrWhiteSpace($value)) { $value = $ipRange }
-              if ([string]::IsNullOrWhiteSpace($value)) { $value = $fqdn }
-              Write-Output "DG $deviceGroup address object: $name => $value"
+          $deviceGroupList = Invoke-PanosConfigGet $key "/config/devices/entry/device-group/entry"
+          $dgEntries = $deviceGroupList.SelectNodes("/response/result/device-group/entry")
+          $dgCount = if ($dgEntries) { $dgEntries.Count } else { 0 }
+          Write-Output "Panorama device-group count discovered via API: $dgCount"
+          if ($dgEntries) {
+            foreach ($dg in $dgEntries) {
+              Write-Output "Panorama device-group discovered: $($dg.GetAttribute('name'))"
             }
           }
 
-          $preRuleResponse = Invoke-PanosConfigGet $key "$baseXpath/pre-rulebase/security/rules"
-          $preRuleEntries = $preRuleResponse.SelectNodes("/response/result/rules/entry")
-          $preRuleCount = if ($preRuleEntries) { $preRuleEntries.Count } else { 0 }
-          Write-Output "Panorama DG $deviceGroup pre-rulebase security rule count: $preRuleCount"
-          if ($preRuleEntries) {
-            foreach ($rule in $preRuleEntries) {
-              $ruleName = $rule.GetAttribute("name")
-              $action = Get-NodeText $rule "action"
-              Write-Output "DG $deviceGroup pre-rulebase rule: $ruleName (action=$action)"
-            }
-          }
+          $candidateBasePaths = @(
+            "/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='$deviceGroup']",
+            "/config/devices/entry/device-group/entry[@name='$deviceGroup']"
+          )
 
-          $postRuleResponse = Invoke-PanosConfigGet $key "$baseXpath/post-rulebase/security/rules"
-          $postRuleEntries = $postRuleResponse.SelectNodes("/response/result/rules/entry")
-          $postRuleCount = if ($postRuleEntries) { $postRuleEntries.Count } else { 0 }
-          Write-Output "Panorama DG $deviceGroup post-rulebase security rule count: $postRuleCount"
-          if ($postRuleEntries) {
-            foreach ($rule in $postRuleEntries) {
-              $ruleName = $rule.GetAttribute("name")
-              $action = Get-NodeText $rule "action"
-              Write-Output "DG $deviceGroup post-rulebase rule: $ruleName (action=$action)"
+          foreach ($baseXpath in $candidateBasePaths) {
+            Write-Output "Checking DG path: $baseXpath"
+            $addressResponse = Invoke-PanosConfigGet $key "$baseXpath/address"
+            $addressEntries = $addressResponse.SelectNodes("/response/result/address/entry")
+            $addressCount = if ($addressEntries) { $addressEntries.Count } else { 0 }
+            Write-Output "Panorama DG $deviceGroup address object count at path: $addressCount"
+            if ($addressEntries) {
+              foreach ($entry in $addressEntries) {
+                $name = $entry.GetAttribute("name")
+                $ipNetmask = Get-NodeText $entry "ip-netmask"
+                $ipRange = Get-NodeText $entry "ip-range"
+                $fqdn = Get-NodeText $entry "fqdn"
+                $value = $ipNetmask
+                if ([string]::IsNullOrWhiteSpace($value)) { $value = $ipRange }
+                if ([string]::IsNullOrWhiteSpace($value)) { $value = $fqdn }
+                Write-Output "DG $deviceGroup address object: $name => $value"
+              }
+            }
+
+            $preRuleResponse = Invoke-PanosConfigGet $key "$baseXpath/pre-rulebase/security/rules"
+            $preRuleEntries = $preRuleResponse.SelectNodes("/response/result/rules/entry")
+            $preRuleCount = if ($preRuleEntries) { $preRuleEntries.Count } else { 0 }
+            Write-Output "Panorama DG $deviceGroup pre-rulebase security rule count at path: $preRuleCount"
+            if ($preRuleEntries) {
+              foreach ($rule in $preRuleEntries) {
+                $ruleName = $rule.GetAttribute("name")
+                $action = Get-NodeText $rule "action"
+                Write-Output "DG $deviceGroup pre-rulebase rule: $ruleName (action=$action)"
+              }
+            }
+
+            $postRuleResponse = Invoke-PanosConfigGet $key "$baseXpath/post-rulebase/security/rules"
+            $postRuleEntries = $postRuleResponse.SelectNodes("/response/result/rules/entry")
+            $postRuleCount = if ($postRuleEntries) { $postRuleEntries.Count } else { 0 }
+            Write-Output "Panorama DG $deviceGroup post-rulebase security rule count at path: $postRuleCount"
+            if ($postRuleEntries) {
+              foreach ($rule in $postRuleEntries) {
+                $ruleName = $rule.GetAttribute("name")
+                $action = Get-NodeText $rule "action"
+                Write-Output "DG $deviceGroup post-rulebase rule: $ruleName (action=$action)"
+              }
             }
           }
 
