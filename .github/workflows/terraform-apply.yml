@@ -73,7 +73,7 @@ jobs:
       - name: Terraform Apply
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
 
-      - name: Commit candidate configuration to Panorama
+      - name: Push production configuration to Panorama DG1
         shell: powershell
         run: |
           $apiUrl = "https://${env:TF_VAR_panorama-server}/api"
@@ -159,10 +159,11 @@ jobs:
             Wait-PanosJob $commitJobId "Panorama DG1 candidate commit"
           }
 
+          Write-Output "Starting full production push of Panorama DG1 configuration to managed firewalls."
           $pushResponse = [xml](Invoke-PanosApi @{
             type = "commit"
             key = $key
-            cmd = "<commit-all><shared-policy><device-group><entry name='DG1'/></device-group></shared-policy></commit-all>"
+            cmd = "<commit-all><shared-policy><device-group><entry name='DG1'><include-template>true</include-template></entry></device-group></shared-policy></commit-all>"
           })
           if ($pushResponse.response.status -ne "success") {
             throw "Panorama DG1 push-to-device request failed: $($pushResponse.OuterXml)"
@@ -174,9 +175,9 @@ jobs:
               $pushMessage = $pushResponse.InnerText
             }
             if ($pushResponse.response.code -in @("13", "19") -and $pushMessage -match "(?i)same as the previous commit|no edits have been made|no changes") {
-              Write-Output "Panorama reports that DG1 has no new changes to push to the managed firewalls."
+              Write-Output "Panorama reports that DG1 is already synchronized with the managed firewalls."
               exit 0
             }
             throw "Panorama did not return a DG1 push job ID: $($pushResponse.OuterXml)"
           }
-          Wait-PanosJob $pushJobId "Panorama DG1 push-to-device"
+          Wait-PanosJob $pushJobId "Panorama DG1 full production push"
