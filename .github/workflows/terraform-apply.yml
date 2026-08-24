@@ -130,6 +130,16 @@ jobs:
           $planJsonPath = Join-Path (Get-Location) "tfplan.json"
           terraform show -json tfplan > $planJsonPath
           $planJson = Get-Content -Raw -Path $planJsonPath | ConvertFrom-Json
+          $configuredResources = @($planJson.configuration.root_module.resources)
+          $configuredPanosResources = @($configuredResources | Where-Object { $_.type -like "panos_*" })
+          Write-Output "Terraform configured resource count in plan: $($configuredResources.Count)"
+          Write-Output "Terraform configured PAN-OS resource count in plan: $($configuredPanosResources.Count)"
+          foreach ($resource in $configuredPanosResources) {
+            Write-Output "Terraform configured PAN-OS resource: $($resource.type).$($resource.name)"
+          }
+          if ($configuredPanosResources.Count -eq 0) {
+            throw "Terraform loaded zero panos_* resources from configuration. Check checkout path and .tf file loading."
+          }
           $changeCount = @($planJson.resource_changes).Count
           Write-Output "Terraform plan resource change count: $changeCount"
           foreach ($change in @($planJson.resource_changes)) {
