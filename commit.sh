@@ -11,8 +11,10 @@ if ([string]::IsNullOrWhiteSpace($password)) { throw "PANOS_PASSWORD is required
 $apiUrl = "https://$hostname/api"
 
 function Invoke-PanosApi {
-  param([string]$Type, [string]$Key, [string]$Command)
-  $arguments = @("--silent", "--show-error", "--fail", "--insecure", "--request", "POST", "--data-urlencode", "type=$Type", "--data-urlencode", "key=$Key", "--data-urlencode", "cmd=$Command", $apiUrl)
+  param([string]$Type, [string]$Key, [string]$Command, [string]$Action = "")
+  $arguments = @("--silent", "--show-error", "--fail", "--insecure", "--request", "POST", "--data-urlencode", "type=$Type", "--data-urlencode", "key=$Key", "--data-urlencode", "cmd=$Command")
+  if ($Action) { $arguments += @("--data-urlencode", "action=$Action") }
+  $arguments += $apiUrl
   $content = & curl.exe @arguments
   if ($LASTEXITCODE -ne 0) { throw "Panorama API request failed" }
   return ([xml]($content -join "`n"))
@@ -61,7 +63,7 @@ if ($candidateJob) {
   throw "Panorama candidate commit failed: $($candidate.OuterXml)"
 }
 
-$push = Invoke-PanosApi "commit" $key "<commit-all><shared-policy><device-group><entry name='$deviceGroup'/></device-group></shared-policy></commit-all>"
+$push = Invoke-PanosApi "commit" $key "<commit-all><shared-policy><device-group><entry name='$deviceGroup'/></device-group></shared-policy></commit-all>" "all"
 $pushJob = Get-PanosJobId $push
 if ($pushJob) {
   Wait-PanosJob $key $pushJob "Panorama $deviceGroup full production push"
