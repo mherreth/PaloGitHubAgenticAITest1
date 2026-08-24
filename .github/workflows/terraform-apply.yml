@@ -34,7 +34,7 @@ jobs:
           }
 
       - name: Terraform Plan
-        run: terraform plan -input=false
+        run: terraform plan -input=false -parallelism=1
 
   approval:
     needs: plan
@@ -72,10 +72,10 @@ jobs:
           }
 
       - name: Terraform Plan after approval
-        run: terraform plan -input=false -out=tfplan
+        run: terraform plan -input=false -parallelism=1 -out=tfplan
 
       - name: Terraform Apply
-        run: terraform apply -input=false -auto-approve tfplan
+        run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
 
       - name: Commit candidate configuration to Panorama
         shell: powershell

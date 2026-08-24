@@ -1,5 +1,6 @@
 resource "panos_panorama_security_rule_group" "example1" {
   device_group = var.device-group
+  rulebase     = "pre-rulebase"
   rule {
     name                  = "Deny sales to eng"
     source_zones          = ["any"]
@@ -20,6 +21,7 @@ resource "panos_panorama_security_rule_group" "example1" {
 
 resource "panos_panorama_security_rule_group" "example2" {
   device_group = var.device-group
+  rulebase     = "pre-rulebase"
   rule {
     name                  = "ssl traffic"
     source_zones          = ["any"]
