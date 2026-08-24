@@ -120,7 +120,13 @@ jobs:
             "-replace=panos_panorama_address_object.webhost-15",
             "-replace=panos_panorama_address_object.webhost-16"
           )
-          & terraform @planArgs
+          $planOutput = & terraform @planArgs 2>&1
+          $planSucceeded = $?
+          $planOutput | ForEach-Object { Write-Output $_ }
+          Write-Output "terraform plan success flag: $planSucceeded"
+          if (-not $planSucceeded) {
+            throw "terraform plan failed in plan job."
+          }
 
   apply:
     needs: plan
@@ -184,6 +190,8 @@ jobs:
         shell: powershell
         run: |
           Set-Location $env:TF_WORKING_DIR
+          if (Test-Path "tfplan") { Remove-Item -Force "tfplan" }
+          if (Test-Path "tfplan.json") { Remove-Item -Force "tfplan.json" }
           $planArgs = @(
             "plan", "-input=false", "-parallelism=1",
             "-replace=panos_panorama_security_rule_group.example1",
@@ -203,9 +211,18 @@ jobs:
             "-replace=panos_panorama_address_object.webhost-16",
             "-out=tfplan"
           )
-          & terraform @planArgs
-          $planOutput = terraform show -no-color tfplan
-          $planText = $planOutput -join [Environment]::NewLine
+          $planOutput = & terraform @planArgs 2>&1
+          $planSucceeded = $?
+          $planOutput | ForEach-Object { Write-Output $_ }
+          Write-Output "terraform plan success flag: $planSucceeded"
+          if (-not $planSucceeded) {
+            throw "terraform plan failed in apply job."
+          }
+          if (-not (Test-Path "tfplan")) {
+            throw "terraform plan did not produce tfplan file."
+          }
+          $planOutputText = terraform show -no-color tfplan
+          $planText = $planOutputText -join [Environment]::NewLine
           $planText
           $planJsonPath = Join-Path (Get-Location) "tfplan.json"
           terraform show -json tfplan > $planJsonPath
