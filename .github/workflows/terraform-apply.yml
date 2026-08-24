@@ -40,18 +40,10 @@ jobs:
       - name: Terraform Plan
         run: terraform plan -input=false -parallelism=1
 
-  approval:
+  apply:
     needs: plan
     runs-on: self-hosted
     environment: panorama-production
-    timeout-minutes: 15
-    steps:
-      - name: Approval granted
-        run: Write-Output "Approval granted. Terraform apply may proceed."
-
-  apply:
-    needs: approval
-    runs-on: self-hosted
     timeout-minutes: 15
     env:
       TF_VAR_panorama-server: ${{ secrets.PANOS_HOSTNAME }}
