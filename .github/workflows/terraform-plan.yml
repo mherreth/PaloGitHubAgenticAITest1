@@ -4,9 +4,15 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   terraform:
-    runs-on: ubuntu-latest
+    runs-on:
+      - self-hosted
+      - windows
+      - x64
 
     env:
 
