@@ -76,11 +76,11 @@ jobs:
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
 
       - name: Push production configuration to Panorama DG1
-        shell: bash
+        shell: powershell
         env:
           PANOS_HOSTNAME: ${{ secrets.PANOS_HOSTNAME }}
           PANOS_USERNAME: ${{ secrets.PANOS_USERNAME }}
           PANOS_PASSWORD: ${{ secrets.PANOS_PASSWORD }}
           PANOS_DEVICE_GROUP: DG1
           PANOS_COMMIT_DESCRIPTION: Terraform apply ${{ github.sha }}
-        run: bash ./commit.sh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File ./commit.ps1
