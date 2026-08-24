@@ -27,6 +27,19 @@ jobs:
       - name: Terraform Init
         run: terraform init -input=false
 
+      - name: Terraform context diagnostics
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          Write-Output "Working directory: $(Get-Location)"
+          Write-Output "Terraform workspace: $(terraform workspace show)"
+          Write-Output "Terraform version:"
+          terraform version
+          Write-Output "Terraform .tf files:"
+          Get-ChildItem -File *.tf | ForEach-Object { Write-Output " - $($_.Name)" }
+          Write-Output "Terraform providers:"
+          terraform providers
+
       - name: Terraform Validate
         run: terraform validate
 
@@ -107,6 +120,12 @@ jobs:
           $planOutput = terraform show -no-color tfplan
           $planText = $planOutput -join [Environment]::NewLine
           $planText
+          $planJson = terraform show -json tfplan | ConvertFrom-Json
+          $changeCount = @($planJson.resource_changes).Count
+          Write-Output "Terraform plan resource change count: $changeCount"
+          if ($changeCount -eq 0) {
+            throw "Terraform plan contains zero resource changes. PAN-OS resources are not being planned."
+          }
 
       - name: Terraform Apply
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
