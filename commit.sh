@@ -53,11 +53,16 @@ if ($LASTEXITCODE -ne 0) { throw "Panorama API key generation request failed" }
 $key = ([xml]($keygenContent -join "`n")).response.result.key
 if ([string]::IsNullOrWhiteSpace($key)) { throw "Panorama did not return an API key" }
 
+function Is-PanosNoChanges {
+  param([xml]$Response)
+  return ($Response.response.status -eq "success" -and $Response.InnerText -match "(?i)no changes|same as the previous commit|no edits have been made")
+}
+
 $candidate = Invoke-PanosApi "commit" $key "<commit><description>$description</description><partial><device-group><entry name='$deviceGroup'/></device-group></partial></commit>"
 $candidateJob = Get-PanosJobId $candidate
 if ($candidateJob) {
   Wait-PanosJob $key $candidateJob "Panorama $deviceGroup candidate commit"
-} elseif ($candidate.response.code -eq "13" -or $candidate.InnerText -match "(?i)no changes|same as the previous commit|no edits have been made") {
+} elseif (Is-PanosNoChanges $candidate) {
   Write-Output "Panorama reports no new $deviceGroup candidate changes."
 } else {
   throw "Panorama candidate commit failed: $($candidate.OuterXml)"
@@ -67,7 +72,7 @@ $push = Invoke-PanosApi "commit" $key "<commit-all><shared-policy><device-group>
 $pushJob = Get-PanosJobId $push
 if ($pushJob) {
   Wait-PanosJob $key $pushJob "Panorama $deviceGroup full production push"
-} elseif ($push.response.code -eq "19" -or $push.InnerText -match "(?i)no changes") {
+} elseif (Is-PanosNoChanges $push) {
   Write-Output "Panorama reports that $deviceGroup is already synchronized with the managed firewalls."
 } else {
   throw "Panorama production push failed: $($push.OuterXml)"
