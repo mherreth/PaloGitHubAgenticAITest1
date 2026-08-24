@@ -376,6 +376,13 @@ jobs:
             "/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='$deviceGroup']",
             "/config/devices/entry/device-group/entry[@name='$deviceGroup']"
           )
+          $expectedAddressObjects = @(
+            "webhost-1","webhost-2","webhost-3","webhost-4","webhost-5","webhost-6","webhost-7",
+            "webhost-11","webhost-12","webhost-13","webhost-14","webhost-15","webhost-16","webhost-17"
+          )
+          $expectedRules = @("Deny sales to eng", "ssl traffic")
+          $foundAddressObjects = @{}
+          $foundRules = @{}
 
           foreach ($baseXpath in $candidateBasePaths) {
             Write-Output "Checking DG path: $baseXpath"
@@ -392,6 +399,7 @@ jobs:
                 $value = $ipNetmask
                 if ([string]::IsNullOrWhiteSpace($value)) { $value = $ipRange }
                 if ([string]::IsNullOrWhiteSpace($value)) { $value = $fqdn }
+                $foundAddressObjects[$name] = $true
                 Write-Output "DG $deviceGroup address object: $name => $value"
               }
             }
@@ -404,6 +412,7 @@ jobs:
               foreach ($rule in $preRuleEntries) {
                 $ruleName = $rule.GetAttribute("name")
                 $action = Get-NodeText $rule "action"
+                $foundRules[$ruleName] = $true
                 Write-Output "DG $deviceGroup pre-rulebase rule: $ruleName (action=$action)"
               }
             }
@@ -416,9 +425,24 @@ jobs:
               foreach ($rule in $postRuleEntries) {
                 $ruleName = $rule.GetAttribute("name")
                 $action = Get-NodeText $rule "action"
+                $foundRules[$ruleName] = $true
                 Write-Output "DG $deviceGroup post-rulebase rule: $ruleName (action=$action)"
               }
             }
+          }
+
+          $missingAddressObjects = @($expectedAddressObjects | Where-Object { -not $foundAddressObjects.ContainsKey($_) })
+          $missingRules = @($expectedRules | Where-Object { -not $foundRules.ContainsKey($_) })
+          Write-Output "DG $deviceGroup expected address objects missing count: $($missingAddressObjects.Count)"
+          if ($missingAddressObjects.Count -gt 0) {
+            Write-Output "DG $deviceGroup missing address objects: $($missingAddressObjects -join ', ')"
+          }
+          Write-Output "DG $deviceGroup expected rules missing count: $($missingRules.Count)"
+          if ($missingRules.Count -gt 0) {
+            Write-Output "DG $deviceGroup missing rules: $($missingRules -join ', ')"
+          }
+          if ($missingAddressObjects.Count -gt 0 -or $missingRules.Count -gt 0) {
+            throw "Panorama DG verification failed. Expected hosts/rules are missing from DG $deviceGroup."
           }
 
       - name: Commit Panorama configuration for DG1
