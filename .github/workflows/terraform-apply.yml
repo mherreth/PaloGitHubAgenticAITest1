@@ -103,6 +103,26 @@ jobs:
             throw "Panorama commit request failed"
           }
           $commitResponse = [xml]$commitContent
+          $commitMessage = $commitResponse.SelectSingleNode("/response/msg").InnerText
+          if ([string]::IsNullOrWhiteSpace($commitMessage)) {
+            $commitMessage = $commitResponse.SelectSingleNode("/response/result/msg").InnerText
+          }
+          if ($commitResponse.response.code -eq "13" -and $commitMessage -match "(?i)same as the previous commit|no edits have been made") {
+            Write-Output "Panorama reported a duplicate or queued commit. Retrying with force for DG1."
+            $commitContent = & curl.exe --silent --show-error --fail --insecure --request POST `
+              --data-urlencode "type=commit" `
+              --data-urlencode "key=$key" `
+              --data-urlencode "cmd=<commit><force>yes</force><description>Terraform apply $env:GITHUB_SHA</description><partial><device-group><entry name='DG1'/></device-group></partial></commit>" `
+              $apiUrl
+            if ($LASTEXITCODE -ne 0) {
+              throw "Panorama forced commit request failed"
+            }
+            $commitResponse = [xml]$commitContent
+            $commitMessage = $commitResponse.SelectSingleNode("/response/msg").InnerText
+            if ([string]::IsNullOrWhiteSpace($commitMessage)) {
+              $commitMessage = $commitResponse.InnerText
+            }
+          }
           if ($commitResponse.response.status -ne "success") {
             throw "Panorama commit request failed: $commitContent"
           }
@@ -114,7 +134,6 @@ jobs:
             $jobId = $commitResponse.SelectSingleNode("/response/result/job-id").InnerText
           }
           if ([string]::IsNullOrWhiteSpace($jobId)) {
-            $commitMessage = $commitResponse.SelectSingleNode("/response/result/msg").InnerText
             if ([string]::IsNullOrWhiteSpace($commitMessage)) {
               $commitMessage = $commitResponse.InnerText
             }
