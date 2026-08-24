@@ -23,6 +23,8 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Detect Terraform working directory
         shell: powershell
@@ -144,6 +146,8 @@ jobs:
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
 
       - name: Detect Terraform working directory
         shell: powershell
@@ -190,8 +194,11 @@ jobs:
         shell: powershell
         run: |
           Set-Location $env:TF_WORKING_DIR
-          if (Test-Path "tfplan") { Remove-Item -Force "tfplan" }
-          if (Test-Path "tfplan.json") { Remove-Item -Force "tfplan.json" }
+          $tfPlanPath = Join-Path $env:TF_WORKING_DIR "tfplan"
+          if (Test-Path $tfPlanPath) { Remove-Item -Force $tfPlanPath }
+          $tfPlanJsonPath = Join-Path $env:TF_WORKING_DIR "tfplan.json"
+          if (Test-Path $tfPlanJsonPath) { Remove-Item -Force $tfPlanJsonPath }
+          "TFPLAN_PATH=$tfPlanPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           $planArgs = @(
             "plan", "-input=false", "-parallelism=1",
             "-replace=panos_panorama_security_rule_group.example1",
@@ -209,7 +216,7 @@ jobs:
             "-replace=panos_panorama_address_object.webhost-14",
             "-replace=panos_panorama_address_object.webhost-15",
             "-replace=panos_panorama_address_object.webhost-16",
-            "-out=tfplan"
+            "-out=$tfPlanPath"
           )
           $planOutput = & terraform @planArgs 2>&1
           $planSucceeded = $?
@@ -218,15 +225,14 @@ jobs:
           if (-not $planSucceeded) {
             throw "terraform plan failed in apply job."
           }
-          if (-not (Test-Path "tfplan")) {
+          if (-not (Test-Path $tfPlanPath)) {
             throw "terraform plan did not produce tfplan file."
           }
-          $planOutputText = terraform show -no-color tfplan
+          $planOutputText = terraform show -no-color $tfPlanPath
           $planText = $planOutputText -join [Environment]::NewLine
           $planText
-          $planJsonPath = Join-Path (Get-Location) "tfplan.json"
-          terraform show -json tfplan > $planJsonPath
-          $planJson = Get-Content -Raw -Path $planJsonPath | ConvertFrom-Json
+          terraform show -json $tfPlanPath > $tfPlanJsonPath
+          $planJson = Get-Content -Raw -Path $tfPlanJsonPath | ConvertFrom-Json
           $configuredResources = if ($null -eq $planJson.configuration.root_module.resources) { @() } else { @($planJson.configuration.root_module.resources) }
           $configuredPanosResources = @($configuredResources | Where-Object { $_ -and $_.type -like "panos_*" })
           Write-Output "Terraform configured resource count in plan: $($configuredResources.Count)"
@@ -269,7 +275,9 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
           Set-Location $env:TF_WORKING_DIR
-          $applyOutput = & terraform apply -input=false -parallelism=1 -auto-approve tfplan 2>&1
+          if ([string]::IsNullOrWhiteSpace($env:TFPLAN_PATH)) { throw "TFPLAN_PATH is not set." }
+          if (-not (Test-Path $env:TFPLAN_PATH)) { throw "TFPLAN_PATH file does not exist: $env:TFPLAN_PATH" }
+          $applyOutput = & terraform apply -input=false -parallelism=1 -auto-approve $env:TFPLAN_PATH 2>&1
           $applySucceeded = $?
           $applyOutput | ForEach-Object { Write-Output $_ }
           Write-Output "terraform apply success flag: $applySucceeded"
