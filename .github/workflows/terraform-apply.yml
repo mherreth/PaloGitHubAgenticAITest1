@@ -70,7 +70,11 @@ jobs:
           }
 
       - name: Terraform Plan after approval
-        run: terraform plan -input=false -parallelism=1 -out=tfplan
+        shell: powershell
+        run: terraform plan -input=false -parallelism=1 `
+          -replace=panos_panorama_security_rule_group.example1 `
+          -replace=panos_panorama_security_rule_group.example2 `
+          -out=tfplan
 
       - name: Terraform Apply
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan

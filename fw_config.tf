@@ -13,10 +13,6 @@ resource "panos_panorama_security_rule_group" "example1" {
     categories            = ["any"]
     action                = "deny"
   }
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 resource "panos_panorama_security_rule_group" "example2" {
@@ -33,10 +29,6 @@ resource "panos_panorama_security_rule_group" "example2" {
     services              = ["any"]
     categories            = ["any"]
     action                = "deny"
-  }
-
-  lifecycle {
-    create_before_destroy = true
   }
 }
 
