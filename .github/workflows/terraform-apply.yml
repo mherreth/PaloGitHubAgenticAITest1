@@ -44,6 +44,12 @@ jobs:
           if (-not ($tfFiles.Name -contains "panos_provider.tf")) {
             throw "panos_provider.tf was not found in the Terraform working directory."
           }
+          $panosResourceLines = Select-String -Path "fw_config.tf" -Pattern 'resource\s+"panos_' -AllMatches
+          $panosResourceLineCount = if ($panosResourceLines) { @($panosResourceLines).Count } else { 0 }
+          Write-Output "fw_config.tf PAN-OS resource declaration line count: $panosResourceLineCount"
+          if ($panosResourceLineCount -eq 0) {
+            throw "fw_config.tf is present but no panos_ resource declarations were found."
+          }
           Write-Output "Terraform providers:"
           terraform providers
 
@@ -130,8 +136,8 @@ jobs:
           $planJsonPath = Join-Path (Get-Location) "tfplan.json"
           terraform show -json tfplan > $planJsonPath
           $planJson = Get-Content -Raw -Path $planJsonPath | ConvertFrom-Json
-          $configuredResources = @($planJson.configuration.root_module.resources)
-          $configuredPanosResources = @($configuredResources | Where-Object { $_.type -like "panos_*" })
+          $configuredResources = if ($null -eq $planJson.configuration.root_module.resources) { @() } else { @($planJson.configuration.root_module.resources) }
+          $configuredPanosResources = @($configuredResources | Where-Object { $_ -and $_.type -like "panos_*" })
           Write-Output "Terraform configured resource count in plan: $($configuredResources.Count)"
           Write-Output "Terraform configured PAN-OS resource count in plan: $($configuredPanosResources.Count)"
           foreach ($resource in $configuredPanosResources) {
@@ -140,16 +146,17 @@ jobs:
           if ($configuredPanosResources.Count -eq 0) {
             throw "Terraform loaded zero panos_* resources from configuration. Check checkout path and .tf file loading."
           }
-          $changeCount = @($planJson.resource_changes).Count
+          $resourceChanges = if ($null -eq $planJson.resource_changes) { @() } else { @($planJson.resource_changes) }
+          $changeCount = $resourceChanges.Count
           Write-Output "Terraform plan resource change count: $changeCount"
-          foreach ($change in @($planJson.resource_changes)) {
+          foreach ($change in $resourceChanges) {
             Write-Output "Terraform planned change: $($change.address)"
           }
           if ($changeCount -eq 0) {
             throw "Terraform plan contains zero resource changes. PAN-OS resources are not being planned."
           }
           $panosActionableChanges = @(
-            @($planJson.resource_changes) |
+            $resourceChanges |
             Where-Object {
               $_.type -like "panos_*" -and
               $_.change -and
