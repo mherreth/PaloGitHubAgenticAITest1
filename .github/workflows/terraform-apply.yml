@@ -120,7 +120,9 @@ jobs:
           $planOutput = terraform show -no-color tfplan
           $planText = $planOutput -join [Environment]::NewLine
           $planText
-          $planJson = terraform show -json tfplan | ConvertFrom-Json
+          $planJsonPath = Join-Path (Get-Location) "tfplan.json"
+          terraform show -json tfplan > $planJsonPath
+          $planJson = Get-Content -Raw -Path $planJsonPath | ConvertFrom-Json
           $changeCount = @($planJson.resource_changes).Count
           Write-Output "Terraform plan resource change count: $changeCount"
           if ($changeCount -eq 0) {
