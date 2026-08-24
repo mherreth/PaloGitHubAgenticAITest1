@@ -39,7 +39,7 @@ jobs:
       - name: Upload Terraform plan
         uses: actions/upload-artifact@v4
         with:
-          name: terraform-plan
+          name: terraform-plan-${{ github.run_id }}
           path: tfplan
           retention-days: 1
 
@@ -66,7 +66,10 @@ jobs:
       - name: Download approved Terraform plan
         uses: actions/download-artifact@v4
         with:
-          name: terraform-plan
+          name: terraform-plan-${{ github.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.run_id }}
 
       - name: Check PAN-OS connectivity
         shell: powershell
