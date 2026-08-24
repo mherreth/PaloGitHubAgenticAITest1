@@ -5,7 +5,7 @@ on:
     branches: [ main ]
 
 jobs:
-  terraform:
+  plan:
     runs-on: self-hosted
     timeout-minutes: 15
     env:
@@ -21,7 +21,40 @@ jobs:
         uses: hashicorp/setup-terraform@v3
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -input=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Check PAN-OS connectivity
+        shell: powershell
+        run: |
+          if (-not (Test-NetConnection -ComputerName ${env:TF_VAR_panorama-server} -Port 443 -InformationLevel Quiet)) {
+            throw "Cannot reach PAN-OS at ${env:TF_VAR_panorama-server} on TCP 443"
+          }
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -out=tfplan
+
+  apply:
+    needs: plan
+    runs-on: self-hosted
+    environment: panorama-production
+    timeout-minutes: 15
+    env:
+      TF_VAR_panorama-server: ${{ secrets.PANOS_HOSTNAME }}
+      TF_VAR_device-group: ${{ secrets.PANOS_DEVICE_GROUP }}
+      TF_VAR_password: ${{ secrets.PANOS_PASSWORD }}
+      TF_VAR_username: ${{ secrets.PANOS_USERNAME }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init -input=false
 
       - name: Check PAN-OS connectivity
         shell: powershell
@@ -31,4 +64,29 @@ jobs:
           }
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve
+        run: terraform apply -input=false -auto-approve
+
+      - name: Commit candidate configuration to Panorama
+        shell: powershell
+        run: |
+          $apiUrl = "https://${env:TF_VAR_panorama-server}/api"
+          $keygen = Invoke-WebRequest -UseBasicParsing -Uri $apiUrl -Method Post -Body @{
+            type = "keygen"
+            user = $env:TF_VAR_username
+            password = $env:TF_VAR_password
+          }
+          $key = ([xml]$keygen.Content).response.result.key
+          if ([string]::IsNullOrWhiteSpace($key)) {
+            throw "Panorama did not return an API key"
+          }
+
+          $commit = Invoke-WebRequest -UseBasicParsing -Uri $apiUrl -Method Post -Body @{
+            type = "commit"
+            key = $key
+            cmd = "<commit><description>Terraform apply $env:GITHUB_SHA</description></commit>"
+          }
+          $commitResponse = [xml]$commit.Content
+          if ($commitResponse.response.status -ne "success") {
+            throw "Panorama commit request failed: $($commit.Content)"
+          }
+          Write-Output "Panorama commit request accepted."

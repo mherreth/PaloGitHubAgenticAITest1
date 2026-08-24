@@ -40,53 +40,63 @@ resource "panos_panorama_security_rule_group" "example2" {
 
 
 
-resource "panos_address_object" "webhost-1" {
+resource "panos_panorama_address_object" "webhost-1" {
+  device_group = var.device-group
   name  = "webhost-1"
   value = "10.200.0.30/32"
 }
 
-resource "panos_address_object" "webhost-2" {
+resource "panos_panorama_address_object" "webhost-2" {
+  device_group = var.device-group
   name  = "webhost-2"
   value = "10.200.0.23/32"
 }
 
-resource "panos_address_object" "webhost-3" {
+resource "panos_panorama_address_object" "webhost-3" {
+  device_group = var.device-group
   name  = "webhost-3"
   value = "10.200.0.24/32"
 }
 
 
-resource "panos_address_object" "webhost-4" {
+ resource "panos_panorama_address_object" "webhost-4" {
+  device_group = var.device-group
   name  = "webhost-4"
   value = "10.200.0.25/32"
 }
 
-resource "panos_address_object" "webhost-5" {
+resource "panos_panorama_address_object" "webhost-5" {
+  device_group = var.device-group
   name  = "webhost-5"
   value = "10.200.0.26/32"
 }
 
-resource "panos_address_object" "webhost-6" {
+ resource "panos_panorama_address_object" "webhost-6" {
+  device_group = var.device-group
   name  = "webhost-6"
   value = "10.200.0.27/32"
 }
 
-resource "panos_address_object" "webhost-7" {
+resource "panos_panorama_address_object" "webhost-7" {
+  device_group = var.device-group
   name  = "webhost-7"
   value = "10.200.0.28/32"
 }
 
-resource "panos_address_object" "webhost-11" {
+ resource "panos_panorama_address_object" "webhost-11" {
+  device_group = var.device-group
   name  = "webhost-11"
   value = "10.200.0.40/32"
 }
 
-resource "panos_address_object" "webhost-12" {
+resource "panos_panorama_address_object" "webhost-12" {
+  device_group = var.device-group
   name  = "webhost-12"
   value = "10.200.0.41/32"
 }
 
-resource "panos_address_object" "webhost-13" {
+resource "panos_panorama_address_object" "webhost-13" {
+  device_group = var.device-group
   name  = "webhost-13"
   value = "10.200.0.42/32"
 }
