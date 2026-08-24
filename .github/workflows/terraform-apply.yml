@@ -98,85 +98,93 @@ jobs:
             throw "Panorama did not return an API key"
           }
 
-          $commitContent = & curl.exe --silent --show-error --fail --insecure --request POST `
-            --data-urlencode "type=commit" `
-            --data-urlencode "key=$key" `
-            --data-urlencode "cmd=<commit><description>Terraform apply $env:GITHUB_SHA</description><partial><device-group><entry name='DG1'/></device-group></partial></commit>" `
-            $apiUrl
-          if ($LASTEXITCODE -ne 0) {
-            throw "Panorama commit request failed"
-          }
-          $commitResponse = [xml]$commitContent
-          $commitMessage = $commitResponse.SelectSingleNode("/response/msg").InnerText
-          if ([string]::IsNullOrWhiteSpace($commitMessage)) {
-            $commitMessage = $commitResponse.SelectSingleNode("/response/result/msg").InnerText
-          }
-          for ($retry = 1; $retry -le 10 -and $commitResponse.response.code -eq "13"; $retry++) {
-            if ($commitMessage -notmatch "(?i)same as the previous commit|no edits have been made") {
-              break
+          function Invoke-PanosApi {
+            param([hashtable]$Parameters)
+            $arguments = @('--silent', '--show-error', '--fail', '--insecure', '--request', 'POST')
+            foreach ($parameter in $Parameters.GetEnumerator()) {
+              $arguments += '--data-urlencode'
+              $arguments += "$($parameter.Key)=$($parameter.Value)"
             }
-            Write-Output "Panorama has a previous DG1 commit queued or processing. Waiting 30 seconds before retry $retry of 10."
-            Start-Sleep -Seconds 30
-            $commitContent = & curl.exe --silent --show-error --fail --insecure --request POST `
-              --data-urlencode "type=commit" `
-              --data-urlencode "key=$key" `
-              --data-urlencode "cmd=<commit><description>Terraform apply $env:GITHUB_SHA</description><partial><device-group><entry name='DG1'/></device-group></partial></commit>" `
-              $apiUrl
+            $arguments += $apiUrl
+            $content = & curl.exe @arguments
             if ($LASTEXITCODE -ne 0) {
-              throw "Panorama commit retry failed"
+              throw "Panorama API request failed"
             }
-            $commitResponse = [xml]$commitContent
-            $commitMessage = $commitResponse.SelectSingleNode("/response/msg").InnerText
-            if ([string]::IsNullOrWhiteSpace($commitMessage)) {
-              $commitMessage = $commitResponse.SelectSingleNode("/response/result/msg").InnerText
-            }
-          }
-          if ($commitResponse.response.status -ne "success") {
-            throw "Panorama commit request failed: $commitContent"
-          }
-          $jobId = $commitResponse.SelectSingleNode("/response/result/job").InnerText
-          if ([string]::IsNullOrWhiteSpace($jobId)) {
-            $jobId = $commitResponse.SelectSingleNode("/response/result/jobid").InnerText
-          }
-          if ([string]::IsNullOrWhiteSpace($jobId)) {
-            $jobId = $commitResponse.SelectSingleNode("/response/result/job-id").InnerText
-          }
-          if ([string]::IsNullOrWhiteSpace($jobId)) {
-            if ([string]::IsNullOrWhiteSpace($commitMessage)) {
-              $commitMessage = $commitResponse.InnerText
-            }
-            $jobMatch = [regex]::Match($commitMessage, "(?i)job(?:\s*id)?\s*[:=]?\s*(\d+)")
-            if ($jobMatch.Success) {
-              $jobId = $jobMatch.Groups[1].Value
-            }
-          }
-          if ([string]::IsNullOrWhiteSpace($jobId)) {
-            if ($commitMessage -match "(?i)no changes|nothing to commit|no configuration changes") {
-              Write-Output "Panorama reported no candidate changes to commit."
-              exit 0
-            }
-            throw "Panorama did not return a commit job ID. Response: $commitContent"
+            return $content
           }
 
-          for ($attempt = 1; $attempt -le 30; $attempt++) {
-            Start-Sleep -Seconds 10
-            $jobContent = & curl.exe --silent --show-error --fail --insecure --request POST `
-              --data-urlencode "type=op" `
-              --data-urlencode "key=$key" `
-              --data-urlencode "cmd=<show><jobs><id>$jobId</id></jobs></show>" `
-              $apiUrl
-            if ($LASTEXITCODE -ne 0) {
-              throw "Panorama commit status request failed"
+          function Get-PanosJobId {
+            param([xml]$Response)
+            $jobId = $Response.SelectSingleNode("/response/result/job").InnerText
+            if ([string]::IsNullOrWhiteSpace($jobId)) {
+              $jobId = $Response.SelectSingleNode("/response/result/jobid").InnerText
             }
-            $jobResponse = [xml]$jobContent
-            $job = $jobResponse.response.result.job
-            Write-Output "Panorama commit job $jobId status: $($job.status)"
-            if ($job.status -eq "FIN") {
-              if ($job.result -ne "OK") {
-                throw "Panorama commit job failed: $jobContent"
+            if ([string]::IsNullOrWhiteSpace($jobId)) {
+              $jobId = $Response.SelectSingleNode("/response/result/job-id").InnerText
+            }
+            if ([string]::IsNullOrWhiteSpace($jobId)) {
+              $match = [regex]::Match($Response.InnerText, "(?i)job(?:\s*id)?\s*[:=]?\s*(\d+)")
+              if ($match.Success) {
+                $jobId = $match.Groups[1].Value
               }
-              Write-Output "Panorama commit job $jobId completed successfully."
+            }
+            return $jobId
+          }
+
+          function Wait-PanosJob {
+            param([string]$JobId, [string]$Description)
+            for ($attempt = 1; $attempt -le 30; $attempt++) {
+              Start-Sleep -Seconds 10
+              $jobResponse = [xml](Invoke-PanosApi @{
+                type = "op"
+                key = $key
+                cmd = "<show><jobs><id>$JobId</id></jobs></show>"
+              })
+              $job = $jobResponse.response.result.job
+              Write-Output "$Description job $JobId status: $($job.status)"
+              if ($job.status -eq "FIN") {
+                if ($job.result -ne "OK") {
+                  throw "$Description job failed: $($jobResponse.OuterXml)"
+                }
+                Write-Output "$Description job $JobId completed successfully."
+                return
+              }
+            }
+            throw "$Description job $JobId did not finish within 5 minutes"
+          }
+
+          $commitResponse = [xml](Invoke-PanosApi @{
+            type = "commit"
+            key = $key
+            cmd = "<commit><description>Terraform apply $env:GITHUB_SHA</description><partial><device-group><entry name='DG1'/></device-group></partial></commit>"
+          })
+          $commitJobId = Get-PanosJobId $commitResponse
+          if ($commitResponse.response.code -eq "13") {
+            Write-Output "Panorama has no new DG1 candidate changes; continuing to push the already committed DG1 configuration."
+          } elseif ($commitResponse.response.status -ne "success" -or [string]::IsNullOrWhiteSpace($commitJobId)) {
+            throw "Panorama candidate commit failed or returned no job ID: $($commitResponse.OuterXml)"
+          } else {
+            Wait-PanosJob $commitJobId "Panorama DG1 candidate commit"
+          }
+
+          $pushResponse = [xml](Invoke-PanosApi @{
+            type = "commit"
+            key = $key
+            cmd = "<commit-all><shared-policy><device-group><entry name='DG1'/></device-group></shared-policy></commit-all>"
+          })
+          if ($pushResponse.response.status -ne "success") {
+            throw "Panorama DG1 push-to-device request failed: $($pushResponse.OuterXml)"
+          }
+          $pushJobId = Get-PanosJobId $pushResponse
+          if ([string]::IsNullOrWhiteSpace($pushJobId)) {
+            $pushMessage = $pushResponse.SelectSingleNode("/response/msg").InnerText
+            if ([string]::IsNullOrWhiteSpace($pushMessage)) {
+              $pushMessage = $pushResponse.InnerText
+            }
+            if ($pushResponse.response.code -eq "13" -and $pushMessage -match "(?i)same as the previous commit|no edits have been made|no changes") {
+              Write-Output "Panorama reports that DG1 is already pushed to the managed firewalls."
               exit 0
             }
+            throw "Panorama did not return a DG1 push job ID: $($pushResponse.OuterXml)"
           }
-          throw "Panorama commit job $jobId did not finish within 5 minutes"
+          Wait-PanosJob $pushJobId "Panorama DG1 push-to-device"
