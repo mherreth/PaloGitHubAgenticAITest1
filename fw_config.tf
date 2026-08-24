@@ -40,7 +40,7 @@ rule {
 
 resource "panos_address_object" "webhost-1" {
   name = "webhost-1"
-  value = "10.200.0.22/32"
+  value = "10.200.0.30/32"
 }
 
 resource "panos_address_object" "webhost-2" {
@@ -72,14 +72,4 @@ resource "panos_address_object" "webhost-5" {
 resource "panos_address_object" "webhost-7" {
   name = "webhost-7"
   value = "10.200.0.28/32"
-}
-
- resource "panos_address_object" "webhost-8" {
-  name = "webhost-8"
-  value = "10.200.0.29/32"
-}
-
-resource "panos_address_object" "webhost-9" {
-  name = "webhost-9"
-  value = "10.200.0./32"
 }
