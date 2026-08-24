@@ -70,23 +70,29 @@ jobs:
         shell: powershell
         run: |
           $apiUrl = "https://${env:TF_VAR_panorama-server}/api"
-          $keygen = Invoke-WebRequest -UseBasicParsing -Uri $apiUrl -Method Post -Body @{
-            type = "keygen"
-            user = $env:TF_VAR_username
-            password = $env:TF_VAR_password
+          $keygenContent = & curl.exe --silent --show-error --fail --insecure --request POST `
+            --data-urlencode "type=keygen" `
+            --data-urlencode "user=$env:TF_VAR_username" `
+            --data-urlencode "password=$env:TF_VAR_password" `
+            $apiUrl
+          if ($LASTEXITCODE -ne 0) {
+            throw "Panorama API key generation request failed"
           }
-          $key = ([xml]$keygen.Content).response.result.key
+          $key = ([xml]$keygenContent).response.result.key
           if ([string]::IsNullOrWhiteSpace($key)) {
             throw "Panorama did not return an API key"
           }
 
-          $commit = Invoke-WebRequest -UseBasicParsing -Uri $apiUrl -Method Post -Body @{
-            type = "commit"
-            key = $key
-            cmd = "<commit><description>Terraform apply $env:GITHUB_SHA</description></commit>"
+          $commitContent = & curl.exe --silent --show-error --fail --insecure --request POST `
+            --data-urlencode "type=commit" `
+            --data-urlencode "key=$key" `
+            --data-urlencode "cmd=<commit><description>Terraform apply $env:GITHUB_SHA</description></commit>" `
+            $apiUrl
+          if ($LASTEXITCODE -ne 0) {
+            throw "Panorama commit request failed"
           }
-          $commitResponse = [xml]$commit.Content
+          $commitResponse = [xml]$commitContent
           if ($commitResponse.response.status -ne "success") {
-            throw "Panorama commit request failed: $($commit.Content)"
+            throw "Panorama commit request failed: $commitContent"
           }
           Write-Output "Panorama commit request accepted."
