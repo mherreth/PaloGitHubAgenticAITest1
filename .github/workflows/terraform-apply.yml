@@ -4,6 +4,10 @@ on:
   push:
     branches: [ main ]
 
+concurrency:
+  group: panorama-dg1-apply
+  cancel-in-progress: false
+
 jobs:
   plan:
     runs-on: self-hosted
@@ -107,20 +111,24 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($commitMessage)) {
             $commitMessage = $commitResponse.SelectSingleNode("/response/result/msg").InnerText
           }
-          if ($commitResponse.response.code -eq "13" -and $commitMessage -match "(?i)same as the previous commit|no edits have been made") {
-            Write-Output "Panorama reported a duplicate or queued commit. Retrying with force for DG1."
+          for ($retry = 1; $retry -le 10 -and $commitResponse.response.code -eq "13"; $retry++) {
+            if ($commitMessage -notmatch "(?i)same as the previous commit|no edits have been made") {
+              break
+            }
+            Write-Output "Panorama has a previous DG1 commit queued or processing. Waiting 30 seconds before retry $retry of 10."
+            Start-Sleep -Seconds 30
             $commitContent = & curl.exe --silent --show-error --fail --insecure --request POST `
               --data-urlencode "type=commit" `
               --data-urlencode "key=$key" `
-              --data-urlencode "cmd=<commit><force>yes</force><description>Terraform apply $env:GITHUB_SHA</description><partial><device-group><entry name='DG1'/></device-group></partial></commit>" `
+              --data-urlencode "cmd=<commit><description>Terraform apply $env:GITHUB_SHA</description><partial><device-group><entry name='DG1'/></device-group></partial></commit>" `
               $apiUrl
             if ($LASTEXITCODE -ne 0) {
-              throw "Panorama forced commit request failed"
+              throw "Panorama commit retry failed"
             }
             $commitResponse = [xml]$commitContent
             $commitMessage = $commitResponse.SelectSingleNode("/response/msg").InnerText
             if ([string]::IsNullOrWhiteSpace($commitMessage)) {
-              $commitMessage = $commitResponse.InnerText
+              $commitMessage = $commitResponse.SelectSingleNode("/response/result/msg").InnerText
             }
           }
           if ($commitResponse.response.status -ne "success") {
