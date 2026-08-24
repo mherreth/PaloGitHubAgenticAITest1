@@ -106,9 +106,29 @@ jobs:
           if ($commitResponse.response.status -ne "success") {
             throw "Panorama commit request failed: $commitContent"
           }
-          $jobId = $commitResponse.response.result.job
+          $jobId = $commitResponse.SelectSingleNode("/response/result/job").InnerText
           if ([string]::IsNullOrWhiteSpace($jobId)) {
-            throw "Panorama did not return a commit job ID"
+            $jobId = $commitResponse.SelectSingleNode("/response/result/jobid").InnerText
+          }
+          if ([string]::IsNullOrWhiteSpace($jobId)) {
+            $jobId = $commitResponse.SelectSingleNode("/response/result/job-id").InnerText
+          }
+          if ([string]::IsNullOrWhiteSpace($jobId)) {
+            $commitMessage = $commitResponse.SelectSingleNode("/response/result/msg").InnerText
+            if ([string]::IsNullOrWhiteSpace($commitMessage)) {
+              $commitMessage = $commitResponse.InnerText
+            }
+            $jobMatch = [regex]::Match($commitMessage, "(?i)job(?:\s*id)?\s*[:=]?\s*(\d+)")
+            if ($jobMatch.Success) {
+              $jobId = $jobMatch.Groups[1].Value
+            }
+          }
+          if ([string]::IsNullOrWhiteSpace($jobId)) {
+            if ($commitMessage -match "(?i)no changes|nothing to commit|no configuration changes") {
+              Write-Output "Panorama reported no candidate changes to commit."
+              exit 0
+            }
+            throw "Panorama did not return a commit job ID. Response: $commitContent"
           }
 
           for ($attempt = 1; $attempt -le 30; $attempt++) {
