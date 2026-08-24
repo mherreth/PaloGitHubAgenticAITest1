@@ -111,7 +111,7 @@ jobs:
       - name: Terraform Apply
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
 
-      - name: Push production configuration to Panorama DG1
+      - name: Commit Panorama configuration for DG1
         shell: powershell
         env:
           PANOS_HOSTNAME: ${{ secrets.PANOS_HOSTNAME }}
@@ -193,17 +193,14 @@ jobs:
           if ($candidateJobId) {
             Wait-PanosJob $key $candidateJobId "Panorama $deviceGroup candidate commit"
           } elseif (Is-PanosNoChanges $candidate) {
-            Write-Output "Panorama reports no new $deviceGroup candidate changes."
+            Write-Output "Panorama reports no new $deviceGroup candidate changes. Running forced Panorama commit."
+            $forced = Invoke-PanosApi "commit" $key "<commit><description>$description (force)</description><force></force></commit>"
+            $forcedJobId = Get-PanosJobId $forced
+            if ($forcedJobId) {
+              Wait-PanosJob $key $forcedJobId "Panorama forced commit"
+            } else {
+              throw "Panorama forced commit failed or returned no job ID: $($forced.OuterXml)"
+            }
           } else {
             throw "Panorama candidate commit failed: $($candidate.OuterXml)"
-          }
-
-          $push = Invoke-PanosApi "commit" $key "<commit-all><shared-policy><device-group><entry name='$deviceGroup'/></device-group></shared-policy></commit-all>" "all"
-          $pushJobId = Get-PanosJobId $push
-          if ($pushJobId) {
-            Wait-PanosJob $key $pushJobId "Panorama $deviceGroup full production push"
-          } elseif (Is-PanosNoChanges $push) {
-            Write-Output "Panorama reports that $deviceGroup is already synchronized with the managed firewalls."
-          } else {
-            throw "Panorama production push failed or returned no job ID: $($push.OuterXml)"
           }

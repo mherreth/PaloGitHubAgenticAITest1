@@ -65,17 +65,14 @@ $candidateJob = Get-PanosJobId $candidate
 if ($candidateJob) {
   Wait-PanosJob $key $candidateJob "Panorama $deviceGroup candidate commit"
 } elseif (Is-PanosNoChanges $candidate) {
-  Write-Output "Panorama reports no new $deviceGroup candidate changes."
+  Write-Output "Panorama reports no new $deviceGroup candidate changes. Running forced Panorama commit."
+  $forced = Invoke-PanosApi "commit" $key "<commit><description>$description (force)</description><force></force></commit>"
+  $forcedJob = Get-PanosJobId $forced
+  if ($forcedJob) {
+    Wait-PanosJob $key $forcedJob "Panorama forced commit"
+  } else {
+    throw "Panorama forced commit failed or returned no job ID: $($forced.OuterXml)"
+  }
 } else {
   throw "Panorama candidate commit failed: $($candidate.OuterXml)"
-}
-
-$push = Invoke-PanosApi "commit" $key "<commit-all><shared-policy><device-group><entry name='$deviceGroup'/></device-group></shared-policy></commit-all>" "all"
-$pushJob = Get-PanosJobId $push
-if ($pushJob) {
-  Wait-PanosJob $key $pushJob "Panorama $deviceGroup full production push"
-} elseif (Is-PanosNoChanges $push) {
-  Write-Output "Panorama reports that $deviceGroup is already synchronized with the managed firewalls."
-} else {
-  throw "Panorama production push failed: $($push.OuterXml)"
 }
