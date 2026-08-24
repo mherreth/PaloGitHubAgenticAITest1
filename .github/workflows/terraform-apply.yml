@@ -85,7 +85,13 @@ jobs:
             }
           }
           terraform plan -input=false -parallelism=1 -out=tfplan
-          terraform show -no-color tfplan
+          $planText = terraform show -no-color tfplan | Out-String
+          $planText
+          foreach ($ruleName in @("Deny sales to eng", "ssl traffic")) {
+            if ($planText -notmatch [regex]::Escape($ruleName)) {
+              throw "Approved Terraform plan does not contain firewall rule '$ruleName'. No rule will be pushed to Panorama."
+            }
+          }
 
       - name: Terraform Apply
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
@@ -160,6 +166,19 @@ jobs:
               }
             }
             throw "$Description job $JobId did not finish within 5 minutes"
+          }
+
+          $dgConfigResponse = [xml](Invoke-PanosApi @{
+            type = "config"
+            action = "show"
+            key = $key
+            xpath = "/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='DG1']/pre-rulebase/security/rules"
+          })
+          $dgConfigText = $dgConfigResponse.InnerText
+          foreach ($ruleName in @("Deny sales to eng", "ssl traffic")) {
+            if ($dgConfigText -notmatch [regex]::Escape($ruleName)) {
+              throw "Panorama DG1 candidate configuration does not contain firewall rule '$ruleName' after Terraform apply."
+            }
           }
 
           $commitResponse = [xml](Invoke-PanosApi @{
