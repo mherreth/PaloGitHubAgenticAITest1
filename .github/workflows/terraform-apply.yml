@@ -24,11 +24,26 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Detect Terraform working directory
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $match = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "fw_config.tf" -Recurse -File | Select-Object -First 1
+          if (-not $match) { throw "Could not find fw_config.tf anywhere under GITHUB_WORKSPACE." }
+          $tfDir = $match.Directory.FullName
+          if (-not (Test-Path (Join-Path $tfDir "panos_provider.tf"))) {
+            throw "Found fw_config.tf at $tfDir but panos_provider.tf is missing in that directory."
+          }
+          "TF_WORKING_DIR=$tfDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output "Resolved Terraform working directory: $tfDir"
+
       - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init -input=false
 
       - name: Terraform context diagnostics
         shell: powershell
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           $ErrorActionPreference = "Stop"
           Write-Output "Working directory: $(Get-Location)"
@@ -54,6 +69,7 @@ jobs:
           terraform providers
 
       - name: Terraform Validate
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform validate
 
       - name: Check PAN-OS connectivity
@@ -65,6 +81,7 @@ jobs:
 
       - name: Terraform Plan
         shell: powershell
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform plan -input=false -parallelism=1 `
             -replace=panos_panorama_security_rule_group.example1 `
@@ -100,7 +117,21 @@ jobs:
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Detect Terraform working directory
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $match = Get-ChildItem -Path $env:GITHUB_WORKSPACE -Filter "fw_config.tf" -Recurse -File | Select-Object -First 1
+          if (-not $match) { throw "Could not find fw_config.tf anywhere under GITHUB_WORKSPACE." }
+          $tfDir = $match.Directory.FullName
+          if (-not (Test-Path (Join-Path $tfDir "panos_provider.tf"))) {
+            throw "Found fw_config.tf at $tfDir but panos_provider.tf is missing in that directory."
+          }
+          "TF_WORKING_DIR=$tfDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          Write-Output "Resolved Terraform working directory: $tfDir"
+
       - name: Terraform Init
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: terraform init -input=false
 
       - name: Check PAN-OS connectivity
@@ -112,6 +143,7 @@ jobs:
 
       - name: Terraform Plan after approval
         shell: powershell
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           terraform plan -input=false -parallelism=1 `
             -replace=panos_panorama_security_rule_group.example1 `
@@ -175,6 +207,7 @@ jobs:
 
       - name: Terraform Apply
         shell: powershell
+        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           $ErrorActionPreference = "Stop"
           $applyOutput = & terraform apply -input=false -parallelism=1 -auto-approve tfplan 2>&1
