@@ -42,7 +42,20 @@ jobs:
         run: |
           terraform plan -input=false -parallelism=1 `
             -replace=panos_panorama_security_rule_group.example1 `
-            -replace=panos_panorama_security_rule_group.example2
+            -replace=panos_panorama_security_rule_group.example2 `
+            -replace=panos_panorama_address_object.webhost-1 `
+            -replace=panos_panorama_address_object.webhost-2 `
+            -replace=panos_panorama_address_object.webhost-3 `
+            -replace=panos_panorama_address_object.webhost-4 `
+            -replace=panos_panorama_address_object.webhost-5 `
+            -replace=panos_panorama_address_object.webhost-6 `
+            -replace=panos_panorama_address_object.webhost-7 `
+            -replace=panos_panorama_address_object.webhost-11 `
+            -replace=panos_panorama_address_object.webhost-12 `
+            -replace=panos_panorama_address_object.webhost-13 `
+            -replace=panos_panorama_address_object.webhost-14 `
+            -replace=panos_panorama_address_object.webhost-15 `
+            -replace=panos_panorama_address_object.webhost-16
 
   apply:
     needs: plan
@@ -77,6 +90,19 @@ jobs:
           terraform plan -input=false -parallelism=1 `
             -replace=panos_panorama_security_rule_group.example1 `
             -replace=panos_panorama_security_rule_group.example2 `
+            -replace=panos_panorama_address_object.webhost-1 `
+            -replace=panos_panorama_address_object.webhost-2 `
+            -replace=panos_panorama_address_object.webhost-3 `
+            -replace=panos_panorama_address_object.webhost-4 `
+            -replace=panos_panorama_address_object.webhost-5 `
+            -replace=panos_panorama_address_object.webhost-6 `
+            -replace=panos_panorama_address_object.webhost-7 `
+            -replace=panos_panorama_address_object.webhost-11 `
+            -replace=panos_panorama_address_object.webhost-12 `
+            -replace=panos_panorama_address_object.webhost-13 `
+            -replace=panos_panorama_address_object.webhost-14 `
+            -replace=panos_panorama_address_object.webhost-15 `
+            -replace=panos_panorama_address_object.webhost-16 `
             -out=tfplan
           $planOutput = terraform show -no-color tfplan
           $planText = $planOutput -join [Environment]::NewLine
