@@ -85,7 +85,8 @@ jobs:
             }
           }
           terraform plan -input=false -parallelism=1 -out=tfplan
-          $planText = terraform show -no-color tfplan | Out-String
+          $planOutput = terraform show -no-color tfplan
+          $planText = $planOutput -join [Environment]::NewLine
           $planText
           foreach ($ruleName in @("Deny sales to eng", "ssl traffic")) {
             if ($planText -notmatch [regex]::Escape($ruleName)) {
