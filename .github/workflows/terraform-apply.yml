@@ -81,19 +81,6 @@ jobs:
           $planOutput = terraform show -no-color tfplan
           $planText = $planOutput -join [Environment]::NewLine
           $planText
-          $planJsonOutput = terraform show -json tfplan
-          $planJsonText = $planJsonOutput -join [Environment]::NewLine
-          $plan = $planJsonText | ConvertFrom-Json
-          $ruleAddresses = @(
-            "panos_panorama_security_rule_group.example1",
-            "panos_panorama_security_rule_group.example2"
-          )
-          foreach ($address in $ruleAddresses) {
-            $change = @($plan.resource_changes | Where-Object { $_.address -eq $address })
-            if ($change.Count -ne 1 -or $change[0].change.actions -contains "no-op") {
-              throw "Terraform plan contains no change for $address. Panorama commit will not be attempted."
-            }
-          }
 
       - name: Terraform Apply
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
