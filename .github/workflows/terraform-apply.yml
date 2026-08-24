@@ -53,14 +53,16 @@ jobs:
           Write-Output "Resolved Terraform working directory: $tfDir"
 
       - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init -input=false
+        shell: powershell
+        run: |
+          Set-Location $env:TF_WORKING_DIR
+          terraform init -input=false
 
       - name: Terraform context diagnostics
         shell: powershell
-        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           $ErrorActionPreference = "Stop"
+          Set-Location $env:TF_WORKING_DIR
           Write-Output "Working directory: $(Get-Location)"
           Write-Output "Terraform workspace: $(terraform workspace show)"
           Write-Output "Terraform version:"
@@ -84,8 +86,10 @@ jobs:
           terraform providers
 
       - name: Terraform Validate
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform validate
+        shell: powershell
+        run: |
+          Set-Location $env:TF_WORKING_DIR
+          terraform validate
 
       - name: Check PAN-OS connectivity
         shell: powershell
@@ -96,8 +100,8 @@ jobs:
 
       - name: Terraform Plan
         shell: powershell
-        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
+          Set-Location $env:TF_WORKING_DIR
           $planArgs = @(
             "plan", "-input=false", "-parallelism=1",
             "-replace=panos_panorama_security_rule_group.example1",
@@ -164,8 +168,10 @@ jobs:
           Write-Output "Resolved Terraform working directory: $tfDir"
 
       - name: Terraform Init
-        working-directory: ${{ env.TF_WORKING_DIR }}
-        run: terraform init -input=false
+        shell: powershell
+        run: |
+          Set-Location $env:TF_WORKING_DIR
+          terraform init -input=false
 
       - name: Check PAN-OS connectivity
         shell: powershell
@@ -176,8 +182,8 @@ jobs:
 
       - name: Terraform Plan after approval
         shell: powershell
-        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
+          Set-Location $env:TF_WORKING_DIR
           $planArgs = @(
             "plan", "-input=false", "-parallelism=1",
             "-replace=panos_panorama_security_rule_group.example1",
@@ -243,9 +249,9 @@ jobs:
 
       - name: Terraform Apply
         shell: powershell
-        working-directory: ${{ env.TF_WORKING_DIR }}
         run: |
           $ErrorActionPreference = "Stop"
+          Set-Location $env:TF_WORKING_DIR
           $applyOutput = & terraform apply -input=false -parallelism=1 -auto-approve tfplan 2>&1
           $applySucceeded = $?
           $applyOutput | ForEach-Object { Write-Output $_ }
