@@ -118,3 +118,15 @@ resource "panos_panorama_address_object" "webhost-17" {
   name         = "webhost-17"
   value        = "10.200.0.46/32"
 }
+
+resource "panos_panorama_address_object" "webhost-18" {
+  device_group = var.device-group
+  name         = "webhost-18"
+  value        = "10.200.0.47/32"
+}
+
+resource "panos_panorama_address_object" "webhost-19" {
+  device_group = var.device-group
+  name         = "webhost-19"
+  value        = "10.200.0.48/32"
+}
