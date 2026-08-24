@@ -73,3 +73,13 @@ resource "panos_address_object" "webhost-7" {
   name = "webhost-7"
   value = "10.200.0.28/32"
 }
+
+ resource "panos_address_object" "webhost-11" {
+  name = "webhost-11"
+  value = "10.200.0.40/32"
+}
+
+resource "panos_address_object" "webhost-12" {
+  name = "webhost-12"
+  value = "10.200.0.41/32"
+}
