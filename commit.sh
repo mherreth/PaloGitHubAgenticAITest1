@@ -26,7 +26,7 @@ function Get-PanosJobId {
     $node = $Response.SelectSingleNode($xpath)
     if ($node -and $node.InnerText) { return $node.InnerText }
   }
-  $match = [regex]::Match($Response.InnerText, "(?i)job(?:\s*id)?\s*[:=]?\s*(\d+)")
+  $match = [regex]::Match($Response.OuterXml, "(?i)job(?:\s*id)?\s*[:=]?\s*(\d+)")
   if ($match.Success) { return $match.Groups[1].Value }
   return $null
 }
@@ -55,7 +55,9 @@ if ([string]::IsNullOrWhiteSpace($key)) { throw "Panorama did not return an API 
 
 function Is-PanosNoChanges {
   param([xml]$Response)
-  return ($Response.response.status -eq "success" -and $Response.InnerText -match "(?i)no changes|same as the previous commit|no edits have been made")
+  $messageText = ($Response.SelectNodes("//msg") | ForEach-Object { $_.InnerText }) -join " "
+  if ([string]::IsNullOrWhiteSpace($messageText)) { $messageText = $Response.OuterXml }
+  return ($Response.response.status -eq "success" -and $messageText -match "(?i)no changes|same as the previous commit|no edits have been made")
 }
 
 $candidate = Invoke-PanosApi "commit" $key "<commit><description>$description</description><partial><device-group><entry name='$deviceGroup'/></device-group></partial></commit>"
