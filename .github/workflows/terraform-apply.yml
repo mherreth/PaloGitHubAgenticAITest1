@@ -34,19 +34,20 @@ jobs:
           }
 
       - name: Terraform Plan
-        run: terraform plan -input=false -out=tfplan
+        run: terraform plan -input=false
 
-      - name: Upload Terraform plan
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-plan-${{ github.run_id }}
-          path: tfplan
-          retention-days: 1
-
-  apply:
+  approval:
     needs: plan
     runs-on: self-hosted
     environment: panorama-production
+    timeout-minutes: 15
+    steps:
+      - name: Approval granted
+        run: Write-Output "Approval granted. Terraform apply may proceed."
+
+  apply:
+    needs: approval
+    runs-on: self-hosted
     timeout-minutes: 15
     env:
       TF_VAR_panorama-server: ${{ secrets.PANOS_HOSTNAME }}
@@ -63,20 +64,15 @@ jobs:
       - name: Terraform Init
         run: terraform init -input=false
 
-      - name: Download approved Terraform plan
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-plan-${{ github.run_id }}
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          repository: ${{ github.repository }}
-          run-id: ${{ github.run_id }}
-
       - name: Check PAN-OS connectivity
         shell: powershell
         run: |
           if (-not (Test-NetConnection -ComputerName ${env:TF_VAR_panorama-server} -Port 443 -InformationLevel Quiet)) {
             throw "Cannot reach PAN-OS at ${env:TF_VAR_panorama-server} on TCP 443"
           }
+
+      - name: Terraform Plan after approval
+        run: terraform plan -input=false -out=tfplan
 
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve tfplan
