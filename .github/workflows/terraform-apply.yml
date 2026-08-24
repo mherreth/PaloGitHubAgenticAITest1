@@ -111,6 +111,101 @@ jobs:
       - name: Terraform Apply
         run: terraform apply -input=false -parallelism=1 -auto-approve tfplan
 
+      - name: Verify DG1 objects and rules on Panorama
+        shell: powershell
+        env:
+          PANOS_HOSTNAME: 192.168.1.109
+          PANOS_USERNAME: ${{ secrets.PANOS_USERNAME }}
+          PANOS_PASSWORD: ${{ secrets.PANOS_PASSWORD }}
+          PANOS_DEVICE_GROUP: DG1
+        run: |
+          $ErrorActionPreference = "Stop"
+          $apiUrl = "https://$env:PANOS_HOSTNAME/api"
+          $deviceGroup = $env:PANOS_DEVICE_GROUP
+
+          if ([string]::IsNullOrWhiteSpace($env:PANOS_HOSTNAME)) { throw "PANOS_HOSTNAME is required" }
+          if ([string]::IsNullOrWhiteSpace($env:PANOS_USERNAME)) { throw "PANOS_USERNAME is required" }
+          if ([string]::IsNullOrWhiteSpace($env:PANOS_PASSWORD)) { throw "PANOS_PASSWORD is required" }
+          if ([string]::IsNullOrWhiteSpace($deviceGroup)) { throw "PANOS_DEVICE_GROUP is required" }
+
+          function Invoke-PanosConfigGet {
+            param([string]$Key, [string]$XPath)
+            $arguments = @(
+              "--silent", "--show-error", "--fail", "--insecure", "--request", "POST",
+              "--data-urlencode", "type=config",
+              "--data-urlencode", "action=get",
+              "--data-urlencode", "key=$Key",
+              "--data-urlencode", "xpath=$XPath",
+              $apiUrl
+            )
+            $content = & curl.exe @arguments
+            if ($LASTEXITCODE -ne 0) { throw "Panorama config query failed for xpath: $XPath" }
+            return ([xml]($content -join "`n"))
+          }
+
+          function Get-NodeText {
+            param($Node, [string]$XPath)
+            if (-not $Node) { return "" }
+            $found = $Node.SelectSingleNode($XPath)
+            if ($found -and $found.InnerText) { return $found.InnerText }
+            return ""
+          }
+
+          $keygenArguments = @(
+            "--silent", "--show-error", "--fail", "--insecure", "--request", "POST",
+            "--data-urlencode", "type=keygen",
+            "--data-urlencode", "user=$env:PANOS_USERNAME",
+            "--data-urlencode", "password=$env:PANOS_PASSWORD",
+            $apiUrl
+          )
+          $keygenContent = & curl.exe @keygenArguments
+          if ($LASTEXITCODE -ne 0) { throw "Panorama API key generation request failed" }
+          $key = ([xml]($keygenContent -join "`n")).response.result.key
+          if ([string]::IsNullOrWhiteSpace($key)) { throw "Panorama did not return an API key" }
+
+          $baseXpath = "/config/devices/entry[@name='localhost.localdomain']/device-group/entry[@name='$deviceGroup']"
+
+          $addressResponse = Invoke-PanosConfigGet $key "$baseXpath/address"
+          $addressEntries = $addressResponse.SelectNodes("/response/result/address/entry")
+          $addressCount = if ($addressEntries) { $addressEntries.Count } else { 0 }
+          Write-Output "Panorama DG $deviceGroup address object count: $addressCount"
+          if ($addressEntries) {
+            foreach ($entry in $addressEntries) {
+              $name = $entry.GetAttribute("name")
+              $ipNetmask = Get-NodeText $entry "ip-netmask"
+              $ipRange = Get-NodeText $entry "ip-range"
+              $fqdn = Get-NodeText $entry "fqdn"
+              $value = $ipNetmask
+              if ([string]::IsNullOrWhiteSpace($value)) { $value = $ipRange }
+              if ([string]::IsNullOrWhiteSpace($value)) { $value = $fqdn }
+              Write-Output "DG $deviceGroup address object: $name => $value"
+            }
+          }
+
+          $preRuleResponse = Invoke-PanosConfigGet $key "$baseXpath/pre-rulebase/security/rules"
+          $preRuleEntries = $preRuleResponse.SelectNodes("/response/result/rules/entry")
+          $preRuleCount = if ($preRuleEntries) { $preRuleEntries.Count } else { 0 }
+          Write-Output "Panorama DG $deviceGroup pre-rulebase security rule count: $preRuleCount"
+          if ($preRuleEntries) {
+            foreach ($rule in $preRuleEntries) {
+              $ruleName = $rule.GetAttribute("name")
+              $action = Get-NodeText $rule "action"
+              Write-Output "DG $deviceGroup pre-rulebase rule: $ruleName (action=$action)"
+            }
+          }
+
+          $postRuleResponse = Invoke-PanosConfigGet $key "$baseXpath/post-rulebase/security/rules"
+          $postRuleEntries = $postRuleResponse.SelectNodes("/response/result/rules/entry")
+          $postRuleCount = if ($postRuleEntries) { $postRuleEntries.Count } else { 0 }
+          Write-Output "Panorama DG $deviceGroup post-rulebase security rule count: $postRuleCount"
+          if ($postRuleEntries) {
+            foreach ($rule in $postRuleEntries) {
+              $ruleName = $rule.GetAttribute("name")
+              $action = Get-NodeText $rule "action"
+              Write-Output "DG $deviceGroup post-rulebase rule: $ruleName (action=$action)"
+            }
+          }
+
       - name: Commit Panorama configuration for DG1
         shell: powershell
         env:
