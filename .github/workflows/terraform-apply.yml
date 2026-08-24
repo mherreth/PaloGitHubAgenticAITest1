@@ -181,8 +181,8 @@ jobs:
             if ([string]::IsNullOrWhiteSpace($pushMessage)) {
               $pushMessage = $pushResponse.InnerText
             }
-            if ($pushResponse.response.code -eq "13" -and $pushMessage -match "(?i)same as the previous commit|no edits have been made|no changes") {
-              Write-Output "Panorama reports that DG1 is already pushed to the managed firewalls."
+            if ($pushResponse.response.code -in @("13", "19") -and $pushMessage -match "(?i)same as the previous commit|no edits have been made|no changes") {
+              Write-Output "Panorama reports that DG1 has no new changes to push to the managed firewalls."
               exit 0
             }
             throw "Panorama did not return a DG1 push job ID: $($pushResponse.OuterXml)"
