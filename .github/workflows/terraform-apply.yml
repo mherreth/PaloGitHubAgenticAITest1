@@ -36,7 +36,14 @@ jobs:
           Write-Output "Terraform version:"
           terraform version
           Write-Output "Terraform .tf files:"
-          Get-ChildItem -File *.tf | ForEach-Object { Write-Output " - $($_.Name)" }
+          $tfFiles = @(Get-ChildItem -File *.tf)
+          $tfFiles | ForEach-Object { Write-Output " - $($_.Name)" }
+          if (-not ($tfFiles.Name -contains "fw_config.tf")) {
+            throw "fw_config.tf was not found in the Terraform working directory."
+          }
+          if (-not ($tfFiles.Name -contains "panos_provider.tf")) {
+            throw "panos_provider.tf was not found in the Terraform working directory."
+          }
           Write-Output "Terraform providers:"
           terraform providers
 
@@ -130,6 +137,23 @@ jobs:
           }
           if ($changeCount -eq 0) {
             throw "Terraform plan contains zero resource changes. PAN-OS resources are not being planned."
+          }
+          $panosActionableChanges = @(
+            @($planJson.resource_changes) |
+            Where-Object {
+              $_.type -like "panos_*" -and
+              $_.change -and
+              $_.change.actions -and
+              -not (@($_.change.actions) -contains "no-op")
+            }
+          )
+          Write-Output "Terraform actionable PAN-OS plan change count: $($panosActionableChanges.Count)"
+          foreach ($change in $panosActionableChanges) {
+            $actions = @($change.change.actions) -join ","
+            Write-Output "Terraform actionable PAN-OS change: $($change.address) actions=[$actions]"
+          }
+          if ($panosActionableChanges.Count -eq 0) {
+            throw "Terraform plan has no actionable panos_* changes. PAN-OS resources are not being changed."
           }
 
       - name: Terraform Apply
